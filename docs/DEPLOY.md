@@ -1,6 +1,6 @@
 # Kenso Deployment Guide
 
-Complete setup for running **kenso-dashboard** (Next.js) alongside **kenso-audio-engine** (Go) on a single AWS server.
+Running **kenso-dashboard** (Next.js) and **kenso-audio-engine** (Go) together via Docker Compose on a single AWS server.
 
 ---
 
@@ -10,218 +10,231 @@ Complete setup for running **kenso-dashboard** (Next.js) alongside **kenso-audio
 Internet
     │
     ▼
-nginx-proxy (:80/:443)
+Caddy (:80/:443)  ←  audio.knownsense.ai  +  kenso.knownsense.ai
     │
-    ├── /         → dashboard:3000  (Next.js)
-    ├── /api/v2/* → host.docker.internal:8080  (Go SFU + REST API)
-    └── /ws        → host.docker.internal:8080  (WebSocket)
+    ├── audio-engine:8080   ← Go WebRTC SFU + REST API
+    └── dashboard:3000       ← Next.js Dashboard
 ```
 
-- **Go server** (`kenso-audio-engine`): port `8080`, handles WebRTC SFU + REST API
-- **Next.js dashboard** (`kenso-dashboard`): port `3000`, standalone container
-- **nginx-proxy**: reverse proxy, SSL termination
+- **Caddy**: reverse proxy + automatic HTTPS (no manual certbot)
+- **audio-engine** (`knownsense-audio-engine`): Go server, port 8080
+- **dashboard** (`kenso-dashboard`): Next.js, port 3000 (internal)
+- **coturn**: TURN server for WebRTC NAT traversal
+
+Both frontend and backend are on the same Docker network — no port forwarding needed for internal communication.
 
 ---
 
 ## Prerequisites
 
-- AWS Ubuntu 22.04+ instance
-- Domain pointed to server IP (`kenso.yourdomain.com`)
-- Docker + Docker Compose installed
-- GitHub access to `cupcake08/kenso-dashboard` and `cupcake08/knownsense-audio-engine`
+- AWS Ubuntu 22.04+
+- Docker + Docker Compose v2 installed
+- Two subdomains pointed to your server IP:
+  - `audio.knownsense.ai` → Go API + WebSocket
+  - `kenso.knownsense.ai` → Dashboard frontend
 
 ---
 
-## One-Time Server Setup
+## Setup
 
-### 1. Install Docker
-
-```bash
-curl -fsSL https://get.docker.com | sudo sh
-sudo usermod -aG docker $USER
-sudo systemctl enable docker
-```
-
-### 2. Install Certbot for SSL
+### 1. Clone repos
 
 ```bash
-sudo apt install certbot python3-certbot-nginx -y
-```
-
-### 3. Clone both repos
-
-```bash
-# kenso-dashboard (frontend)
-sudo mkdir -p /var/www/kenso-dashboard
-cd /var/www/kenso-dashboard
-git clone -b feat/kenso-dashboard https://github.com/cupcake08/kenso-dashboard.git .
-git checkout feat/kenso-dashboard
-
 # kenso-audio-engine (backend)
-sudo mkdir -p /opt/kenso-audio-engine
+mkdir -p /opt/kenso-audio-engine
 cd /opt/kenso-audio-engine
 git clone https://github.com/cupcake08/knownsense-audio-engine.git .
+git checkout main
+
+# kenso-dashboard (frontend)
+mkdir -p /opt/kenso-dashboard
+cd /opt/kenso-dashboard
+git clone -b feat/kenso-dashboard https://github.com/cupcake08/kenso-dashboard.git .
+git checkout feat/kenso-dashboard
 ```
 
----
-
-## Configuration
-
-### kenso-dashboard
+### 2. Create environment file
 
 ```bash
-cd /var/www/kenso-dashboard
-
-# Create .env from example
-cp .env.production.example .env
+cd /opt/kenso-audio-engine
+cp .env.example .env
 nano .env
 ```
 
-Fill in:
+Fill in the required values:
 
 ```env
-NEXT_PUBLIC_API_BASE=https://kenso.yourdomain.com
-NEXT_PUBLIC_FIREBASE_API_KEY=your-firebase-api-key
-NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
-NEXT_PUBLIC_FIREBASE_PROJECT_ID=your-firebase-project-id
-NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your-project.appspot.com
-NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=1234567890
-NEXT_PUBLIC_FIREBASE_APP_ID=1:1234567890:web:abc123
-```
+# Domain
+ALLOWED_ORIGINS=https://kenso.knownsense.ai,https://audio.knownsense.ai
 
-### SSL Certificates
+# Firebase
+FIREBASE_API_KEY=...
+FIREBASE_AUTH_DOMAIN=...
+FIREBASE_PROJECT_ID=...
+FIREBASE_STORAGE_BUCKET=...
+FIREBASE_MESSAGING_SENDER_ID=...
+FIREBASE_APP_ID=...
+FIREBASE_CREDENTIALS_FILE=/app/firebase-credentials.json
 
-```bash
-sudo mkdir -p /etc/nginx/secrets
-sudo certbot certonly --nginx -d kenso.yourdomain.com --email your@email.com --agree-tos --non-interactive
-sudo cp /etc/letsencrypt/live/kenso.yourdomain.com/fullchain.pem /etc/nginx/secrets/
-sudo cp /etc/letsencrypt/live/kenso.yourdomain.com/privkey.pem /etc/nginx/secrets/
-```
+# Storage
+STORAGE_BUCKET=your-project.appspot.com
 
-### kenso-audio-engine
-
-Set env vars for the Go server. Key ones:
-
-```bash
-# .env in /opt/kenso-audio-engine
-FIRESTORE_EMULATOR_HOST=localhost:8081        # only for local dev
-GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
-ALLOWED_ORIGINS=https://kenso.yourdomain.com
-SFU_SHARED_SECRET=your-secure-secret-here
+# API + Auth
 ADMIN_API_KEY=your-admin-key
-KENSO_RTDB_URL=https://your-project-default-rtdb.firebaseio.com
-PORT=8080
+SFU_SHARED_SECRET=your-secure-secret
+
+# TURN server
+EXTERNAL_IP=your-server-ip
+TURN_USERNAME=turnuser
+TURN_PASSWORD=turnpassword
+
+# Dashboard env (shared between docker-compose and dashboard)
+NEXT_PUBLIC_API_BASE=https://audio.knownsense.ai
+FIREBASE_API_KEY=...
+FIREBASE_AUTH_DOMAIN=...
+FIREBASE_PROJECT_ID=...
+FIREBASE_STORAGE_BUCKET=...
+FIREBASE_MESSAGING_SENDER_ID=...
+FIREBASE_APP_ID=...
+
+# Public URL
+PUBLIC_URL=https://audio.knownsense.ai
+```
+
+### 3. Firebase credentials
+
+```bash
+# Download service account key from Firebase Console
+# Save as firebase-credentials.json in /opt/kenso-audio-engine/
+```
+
+### 4. TURN server config
+
+```bash
+# Create turnserver.conf in /opt/kenso-audio-engine/
+sudo cp /opt/kenso-audio-engine/turnserver.conf.example /opt/kenso-audio-engine/turnserver.conf
+# Edit the conf file with your server IP and credentials
 ```
 
 ---
 
-## Starting Services
-
-### Start the Go backend
+## Running
 
 ```bash
 cd /opt/kenso-audio-engine
 
-# Build the Go binary
-go build -o kenso-server ./cmd/server
+# Pull latest code
+git pull
 
-# Run (production)
-PORT=8080 ALLOWED_ORIGINS=https://kenso.yourdomain.com SFU_SHARED_SECRET=... ADMIN_API_KEY=... ./kenso-server
+# Build and start all containers
+docker compose up -d --build
 
-# Or with systemd — see deploy/systemd-kenso-server.service
-sudo cp deploy/systemd-kenso-server.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable kenso-server
-sudo systemctl start kenso-server
-```
+# Check status
+docker compose ps
 
-### Start the dashboard
-
-```bash
-cd /var/www/kenso-dashboard
-
-# Build + start containers
-docker compose build dashboard
-docker compose up -d dashboard
-```
-
-Check logs:
-
-```bash
+# Follow logs
+docker compose logs -f
 docker compose logs -f dashboard
+docker compose logs -f audio-engine
+```
+
+---
+
+## Stopping
+
+```bash
+docker compose down        # stop containers
+docker compose down -v    # stop + remove volumes
 ```
 
 ---
 
 ## Updating
 
-### Dashboard
-
-```bash
-cd /var/www/kenso-dashboard
-git pull origin feat/kenso-dashboard
-docker compose build dashboard
-docker compose up -d dashboard
-```
-
-### Go backend
-
 ```bash
 cd /opt/kenso-audio-engine
-git pull origin main
-go build -o kenso-server ./cmd/server
-sudo systemctl restart kenso-server
+git pull
+
+cd /opt/kenso-dashboard
+git pull
+
+# Rebuild + restart
+cd /opt/kenso-audio-engine
+docker compose up -d --build
 ```
 
 ---
 
-## Service Ports
+## Docker Network
 
-| Service | Port | Purpose |
-|---------|------|---------|
-| Go server | `8080` | REST API + WebSocket SFU |
-| Next.js | `3000` | Dashboard (internal only) |
-| nginx | `80` / `443` | Public HTTPS |
+Both services are on `knownsense-net`:
+
+| Container | Internal IP | Exposed Port |
+|-----------|------------|--------------|
+| audio-engine | `audio-engine:8080` | none (internal) |
+| dashboard | `dashboard:3000` | none (internal) |
+| caddy | caddy:80/443 | :80, :443 |
+| coturn | host network | (used for TURN) |
+
+Dashboard calls the API at `http://audio-engine:8080` internally (via `NEXT_PUBLIC_API_BASE`).
 
 ---
 
 ## File Locations
 
 ```
-/var/www/kenso-dashboard/          # Next.js dashboard
-/opt/kenso-audio-engine/            # Go server
-/etc/systemd/system/kenso-server.service
-/etc/nginx/secrets/                  # SSL certs (fullchain.pem, privkey.pem)
+/opt/kenso-audio-engine/          # Go server + docker-compose
+  ├── docker-compose.yml
+  ├── Caddyfile                   # Routes both domains
+  ├── turnserver.conf
+  ├── .env                        # Secrets + config
+  └── firebase-credentials.json
+
+/opt/kenso-dashboard/             # Next.js dashboard
+  ├── Dockerfile
+  ├── docker-compose.yml          # Standalone (dev only)
+  └── ecosystem.config.js         # PM2 (optional non-Docker)
 ```
 
 ---
 
 ## Troubleshooting
 
-### Dashboard won't start
+### Dashboard shows "Failed to fetch"
 
 ```bash
-docker compose logs dashboard
-# Check .env vars are set correctly
-docker compose exec dashboard env | grep NEXT_PUBLIC
-```
+# Check NEXT_PUBLIC_API_BASE is set to audio.knownsense.ai
+docker compose exec dashboard env | grep NEXT_PUBLIC_API_BASE
 
-### API calls returning 500
-
-```bash
-# Verify Go server is running
+# Verify audio-engine is healthy
 curl http://localhost:8080/health
-# Check Go server logs
-sudo journalctl -u kenso-server -f
+docker compose logs audio-engine
 ```
 
-### SSL cert issues
+### Caddy not routing to dashboard
 
 ```bash
-sudo certbot certificates
-sudo certbot renew --dry-run
+# Check Caddy config loaded
+docker compose exec caddy caddy validate --config /etc/caddy/Caddyfile
+
+# Check Caddy logs
+docker compose logs caddy
 ```
 
-### nginx not routing to Go backend
+### WebSocket connection fails
 
-Ensure `host.docker.internal` resolves on your Docker version. If not, add `--add-host=host.docker.internal:host-gateway` to the nginx container in `docker-compose.yml`.
+```bash
+# Verify coturn is running (TURN needed for remote clients)
+docker compose logs coturn
+
+# Check STUN/TURN credentials match in .env
+```
+
+---
+
+## Ports
+
+| Port | Service |
+|------|---------|
+| `:80` | Caddy HTTP (redirects to HTTPS) |
+| `:443` | Caddy HTTPS (audio.knownsense.ai + kenso.knownsense.ai) |
