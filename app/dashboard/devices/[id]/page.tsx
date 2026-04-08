@@ -3,14 +3,16 @@ import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Mic, Clock, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Clock, AlertTriangle } from "lucide-react";
 import { auth } from "@/lib/firebase";
-import { apiFetch } from "@/lib/api";
-import type { Device, WindowSummary } from "@/types/api";
-import { Loader2, Play, Pause } from "lucide-react";
+import { apiFetch, normalizeDevice, normalizeWindow } from "@/lib/api";
+import type { Device, WindowSummary, WindowDetail, RawDevice, RawWindowSummary, RawWindowDetail } from "@/types/api";
+import { normalizeWindowDetail } from "@/lib/api";
+import { Play, Pause } from "lucide-react";
 import { BadgeVariant } from "@/components/ui/badge-variant";
 import { Skeleton, WindowSkeleton } from "@/components/ui/skeleton";
 import { Waveform } from "@/components/ui/waveform";
+import { useListenLive } from "@/hooks/use-listen";
 
 type Tab = "listen" | "recent" | "report";
 
@@ -20,12 +22,11 @@ const DEMO_DEVICE: Device = {
   location: "Koramangala, Bangalore",
   status: "streaming",
   last_seen_at: new Date().toISOString(),
-  shop_id: "shop_001",
 };
 const DEMO_WINDOWS: WindowSummary[] = [
-  { window_id: "win_001", started_at: new Date(Date.now() - 3600000).toISOString(), duration_minutes: 30, status: "completed", highlights: ["Customer asked about pricing", "Payment received via UPI", "Staff handled refund request"], flags_count: 1, summary: "Busy morning with good customer flow. Payment activity normal. One policy deviation flagged." },
-  { window_id: "win_002", started_at: new Date(Date.now() - 5400000).toISOString(), duration_minutes: 30, status: "completed", highlights: ["Bulk order inquiry", "Delivery scheduling discussion"], flags_count: 0, summary: "Moderate traffic. Two significant business conversations noted." },
-  { window_id: "win_003", started_at: new Date(Date.now() - 10800000).toISOString(), duration_minutes: 30, status: "completed", highlights: ["Customer complaint about stock"], flags_count: 2, summary: "Elevated flag activity. One complaint about missing stock, one policy violation noted." },
+  { window_id: "win_001", started_at: new Date(Date.now() - 3600000).toISOString(), duration_minutes: 30, status: "ready", flag_count: 1 },
+  { window_id: "win_002", started_at: new Date(Date.now() - 5400000).toISOString(), duration_minutes: 30, status: "ready", flag_count: 0 },
+  { window_id: "win_003", started_at: new Date(Date.now() - 10800000).toISOString(), duration_minutes: 30, status: "ready", flag_count: 2 },
 ];
 
 export default function DeviceDetailPage() {
@@ -40,7 +41,8 @@ export default function DeviceDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedWindow, setSelectedWindow] = useState<WindowSummary | null>(null);
-  const [playing, setPlaying] = useState(false);
+  const [windowDetail, setWindowDetail] = useState<WindowDetail | null>(null);
+  const { state: listenState, audioLevel, toggle: toggleListen } = useListenLive(deviceId);
 
   useEffect(() => {
     if (process.env.NEXT_PUBLIC_DEMO_MODE === "true") {
@@ -54,13 +56,42 @@ export default function DeviceDetailPage() {
       return;
     }
     Promise.all([
-      apiFetch<{ device: Device }>(`/devices/${deviceId}`).then(({ device }) => device),
-      apiFetch<{ windows: WindowSummary[] }>(`/devices/${deviceId}/windows`).then(({ windows }) => windows),
+      apiFetch<RawDevice>(`/devices/${deviceId}`).then(normalizeDevice),
+      apiFetch<RawWindowSummary[]>(`/devices/${deviceId}/windows`).then((raw) => raw.map(normalizeWindow)),
     ])
       .then(([d, w]) => { setDevice(d); setWindows(w); })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
   }, [deviceId]);
+
+  // Fetch window detail when a window is selected
+  useEffect(() => {
+    if (!selectedWindow || process.env.NEXT_PUBLIC_DEMO_MODE === "true") {
+      if (selectedWindow && process.env.NEXT_PUBLIC_DEMO_MODE === "true") {
+        // Demo detail
+        setWindowDetail({
+          window_id: selectedWindow.window_id,
+          started_at: selectedWindow.started_at,
+          duration_minutes: selectedWindow.duration_minutes,
+          summary: "Busy morning with good customer flow. Payment activity normal.",
+          highlights: [
+            { type: "payment", time: "10:15 AM", description: "Payment received via UPI" },
+            { type: "inquiry", time: "10:22 AM", description: "Customer asked about pricing" },
+          ],
+          flags: selectedWindow.flag_count > 0 ? [
+            { flag_type: "policy_violation", title: "Policy Deviation", severity: "warning" as const },
+          ] : [],
+          utterances: [],
+        });
+      }
+      return;
+    }
+    setWindowDetail(null);
+    apiFetch<RawWindowDetail>(`/devices/${deviceId}/windows/${selectedWindow.window_id}`)
+      .then(normalizeWindowDetail)
+      .then(setWindowDetail)
+      .catch(() => setWindowDetail(null));
+  }, [selectedWindow, deviceId]);
 
   if (loading) {
     return (
@@ -127,7 +158,7 @@ export default function DeviceDetailPage() {
             <div className="rounded-xl border border-border bg-card/50 overflow-hidden">
               {/* Waveform */}
               <div className="h-32">
-                <Waveform playing={playing} />
+                <Waveform playing={listenState === "connected"} audioLevel={audioLevel} />
               </div>
 
               {/* Controls */}
@@ -135,27 +166,39 @@ export default function DeviceDetailPage() {
                 <div className="flex items-center gap-3">
                   <span
                     className={`h-2 w-2 rounded-full ${
-                      device.status === "streaming"
-                        ? "bg-blue-500 animate-pulse"
-                        : device.status === "online"
-                          ? "bg-emerald-500"
-                          : "bg-red-500"
+                      listenState === "connected"
+                        ? "bg-emerald-500 animate-pulse"
+                        : listenState === "connecting"
+                          ? "bg-blue-500 animate-pulse"
+                          : device.status === "offline"
+                            ? "bg-red-500"
+                            : "bg-muted-foreground"
                     }`}
                   />
                   <span className="text-sm text-muted-foreground">
-                    {device.status === "online" || device.status === "streaming"
-                      ? playing ? "Streaming" : "Ready"
-                      : "Device offline"}
+                    {listenState === "connected"
+                      ? "Live"
+                      : listenState === "connecting"
+                        ? "Connecting…"
+                        : listenState === "error"
+                          ? "Connection failed"
+                          : device.status === "offline"
+                            ? "Device offline"
+                            : "Ready"
+                    }
                   </span>
                 </div>
 
                 <button
-                  onClick={() => setPlaying(!playing)}
-                  disabled={device.status === "offline"}
+                  onClick={toggleListen}
+                  disabled={device.status === "offline" && listenState === "idle"}
                   className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  aria-label={playing ? "Pause" : "Play"}
+                  aria-label={listenState === "connected" || listenState === "connecting" ? "Stop" : "Play"}
                 >
-                  {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}
+                  {listenState === "connected" || listenState === "connecting"
+                    ? <Pause className="h-4 w-4" />
+                    : <Play className="h-4 w-4 ml-0.5" />
+                  }
                 </button>
               </div>
             </div>
@@ -185,15 +228,10 @@ export default function DeviceDetailPage() {
                         <p className="mt-0.5 text-xs text-muted-foreground">{w.duration_minutes}m · {w.status}</p>
                       </div>
                       <div className="flex items-center gap-2">
-                        {w.highlights.length > 0 && (
-                          <BadgeVariant variant="emerald">
-                            {w.highlights.length} highlights
-                          </BadgeVariant>
-                        )}
-                        {w.flags_count > 0 && (
+                        {w.flag_count > 0 && (
                           <BadgeVariant variant="amber" className="gap-1">
                             <AlertTriangle className="h-3 w-3" />
-                            {w.flags_count}
+                            {w.flag_count}
                           </BadgeVariant>
                         )}
                       </div>
@@ -214,22 +252,39 @@ export default function DeviceDetailPage() {
                   <p className="text-xs text-muted-foreground mb-4">
                     {new Date(selectedWindow.started_at).toLocaleString()} · {selectedWindow.duration_minutes}m
                   </p>
-                  {selectedWindow.summary && (
-                    <p className="text-sm text-muted-foreground leading-relaxed">{selectedWindow.summary}</p>
+                  {windowDetail ? (
+                    <>
+                      {windowDetail.summary && (
+                        <p className="text-sm text-muted-foreground leading-relaxed mb-4">{windowDetail.summary}</p>
+                      )}
+                      {windowDetail.highlights.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mb-3">
+                          {windowDetail.highlights.map((h, i) => (
+                            <BadgeVariant key={i} variant="emerald">
+                              {h.description}
+                            </BadgeVariant>
+                          ))}
+                        </div>
+                      )}
+                      {windowDetail.flags.length > 0 && (
+                        <div className="space-y-2">
+                          {windowDetail.flags.map((f, i) => (
+                            <div key={i} className={`rounded-lg border p-3 text-sm ${
+                              f.severity === "critical" ? "border-red-900 bg-red-950/30 text-red-400" :
+                              f.severity === "warning" ? "border-amber-900 bg-amber-950/30 text-amber-400" :
+                              "border-border bg-card/50 text-muted-foreground"
+                            }`}>
+                              <p className="font-medium">{f.title}</p>
+                              {f.description && <p className="mt-0.5 text-xs opacity-80">{f.description}</p>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Loading report…</p>
                   )}
                 </div>
-                {selectedWindow.highlights.length > 0 && (
-                  <div className="rounded-xl border border-border bg-card/50 p-5">
-                    <h3 className="text-sm font-semibold text-foreground mb-3">Highlights</h3>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedWindow.highlights.map((h, i) => (
-                        <BadgeVariant key={i} variant="emerald">
-                          {h}
-                        </BadgeVariant>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             ) : (
               <div className="flex h-40 flex-col items-center justify-center gap-2 text-muted-foreground">

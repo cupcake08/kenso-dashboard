@@ -1,10 +1,87 @@
+// Raw types matching Go backend JSON exactly (snake_case, unix timestamps)
+// These are what apiFetch returns after unwrapping {"data": ...}
+
+export interface RawDevice {
+  mic_id: string;
+  label: string;
+  location: string;
+  status: "active" | "soft_deleted";
+  last_seen_unix: number;
+}
+
+export interface RawWindowSummary {
+  window_id: string;
+  started_at_unix: number;
+  duration_ms: number;
+  flag_count: number;
+  status: "pending" | "analyzing" | "transcribed" | "ready" | "failed" | "expired";
+}
+
+export interface RawWindowDetail {
+  window_id: string;
+  started_at_unix: number;
+  duration_ms: number;
+  summary: string;
+  flags: RawWindowFlag[];
+  highlights: RawWindowHighlight[];
+  utterances: RawWindowUtterance[];
+}
+
+export interface RawWindowFlag {
+  flag_type: "conflict" | "complaint" | "odd_activity" | "loud_noise" | "policy_violation" | "business_insight";
+  title: string;
+  description?: string;
+  severity: "info" | "warning" | "critical";
+}
+
+export interface RawWindowHighlight {
+  type: "order" | "payment" | "inquiry" | "feedback" | "complaint" | "action";
+  time: string;
+  description: string;
+}
+
+export interface RawWindowUtterance {
+  speaker: string;
+  text: string;
+  absolute_time_unix: number;
+}
+
+export interface RawCreditsResponse {
+  balance: number;
+  plan: string;
+  history: RawTransaction[];
+}
+
+export interface RawTransaction {
+  id: string;
+  type: "topup" | "analysis" | "expiry";
+  amount: number;
+  window_id?: string;
+  description?: string;
+  created_at_unix: number;
+}
+
+export interface RawPlanResponse {
+  plan: string;
+  billing_cycle: string;
+  price_per_month: number;
+}
+
+export interface ListenTokenResponse {
+  token: string;
+  sfu_url: string;
+  mic_id: string;
+  expires_at_unix: number;
+}
+
+// Normalized types for UI consumption (ISO dates, semantic field names)
+
 export interface Device {
   device_id: string;
   label: string;
   location: string;
   status: "online" | "offline" | "streaming";
   last_seen_at: string;
-  shop_id: string;
 }
 
 export interface WindowSummary {
@@ -12,21 +89,42 @@ export interface WindowSummary {
   started_at: string;
   duration_minutes: number;
   status: string;
-  highlights: string[];
-  flags_count: number;
-  summary?: string;
+  flag_count: number;
 }
 
-export interface CreditBalance {
-  balance: number;
-  last_updated: string;
+export interface WindowDetail {
+  window_id: string;
+  started_at: string;
+  duration_minutes: number;
+  summary: string;
+  flags: WindowFlag[];
+  highlights: WindowHighlight[];
+  utterances: WindowUtterance[];
+}
+
+export interface WindowFlag {
+  flag_type: string;
+  title: string;
+  description?: string;
+  severity: "info" | "warning" | "critical";
+}
+
+export interface WindowHighlight {
+  type: string;
+  time: string;
+  description: string;
+}
+
+export interface WindowUtterance {
+  speaker: string;
+  text: string;
+  absolute_time: string;
 }
 
 export interface Transaction {
   id: string;
   type: "topup" | "analysis" | "expiry";
   amount: number;
-  balance_after: number;
   description: string;
   created_at: string;
 }

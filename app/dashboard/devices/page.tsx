@@ -1,17 +1,17 @@
 "use client";
 import { useEffect, useState } from "react";
 import { auth } from "@/lib/firebase";
-import { apiFetch } from "@/lib/api";
-import type { Device } from "@/types/api";
+import { apiFetch, normalizeDevice } from "@/lib/api";
+import type { Device, RawDevice } from "@/types/api";
 import { DeviceCard } from "@/components/dashboard/device-card";
 import { DeviceCardSkeleton } from "@/components/ui/skeleton";
 import { Radio } from "lucide-react";
 
 const DEMO_DEVICES: Device[] = [
-  { device_id: "dev_001_koramangala", label: "Store - Koramangala", location: "Koramangala, Bangalore", status: "streaming", last_seen_at: new Date().toISOString(), shop_id: "shop_001" },
-  { device_id: "dev_002_indiranagar", label: "Store - Indiranagar", location: "Indiranagar, Bangalore", status: "online", last_seen_at: new Date(Date.now() - 300000).toISOString(), shop_id: "shop_002" },
-  { device_id: "dev_003_whitefield", label: "Store - Whitefield", location: "Whitefield, Bangalore", status: "offline", last_seen_at: new Date(Date.now() - 7200000).toISOString(), shop_id: "shop_003" },
-  { device_id: "dev_004_hsr", label: "Store - HSR Layout", location: "HSR Layout, Bangalore", status: "online", last_seen_at: new Date(Date.now() - 60000).toISOString(), shop_id: "shop_004" },
+  { device_id: "dev_001_koramangala", label: "Store - Koramangala", location: "Koramangala, Bangalore", status: "streaming", last_seen_at: new Date().toISOString() },
+  { device_id: "dev_002_indiranagar", label: "Store - Indiranagar", location: "Indiranagar, Bangalore", status: "online", last_seen_at: new Date(Date.now() - 300000).toISOString() },
+  { device_id: "dev_003_whitefield", label: "Store - Whitefield", location: "Whitefield, Bangalore", status: "offline", last_seen_at: new Date(Date.now() - 7200000).toISOString() },
+  { device_id: "dev_004_hsr", label: "Store - HSR Layout", location: "HSR Layout, Bangalore", status: "online", last_seen_at: new Date(Date.now() - 60000).toISOString() },
 ];
 
 export default function DevicesPage() {
@@ -29,8 +29,8 @@ export default function DevicesPage() {
       setLoading(false);
       return;
     }
-    apiFetch<{ devices: Device[] }>("/devices")
-      .then(({ devices }) => setDevices(devices))
+    apiFetch<RawDevice[]>("/devices")
+      .then((raw) => setDevices(raw.map(normalizeDevice)))
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);

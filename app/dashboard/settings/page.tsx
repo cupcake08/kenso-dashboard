@@ -1,8 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import { auth } from "@/lib/firebase";
-import { apiFetch } from "@/lib/api";
-import type { Device, PlanResponse } from "@/types/api";
+import { apiFetch, normalizeDevice } from "@/lib/api";
+import type { Device, PlanResponse, RawDevice, RawPlanResponse } from "@/types/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -12,10 +12,10 @@ import { SettingsSkeleton } from "@/components/ui/skeleton";
 
 const DEMO_PLAN: PlanResponse = { plan: "Enterprise", billing_cycle: "prepaid", price_per_month: 29900 };
 const DEMO_DEVICES_SETTINGS: Device[] = [
-  { device_id: "dev_001_koramangala", label: "Store - Koramangala", location: "Koramangala, Bangalore", status: "streaming", last_seen_at: new Date().toISOString(), shop_id: "shop_001" },
-  { device_id: "dev_002_indiranagar", label: "Store - Indiranagar", location: "Indiranagar, Bangalore", status: "online", last_seen_at: new Date(Date.now() - 300000).toISOString(), shop_id: "shop_002" },
-  { device_id: "dev_003_whitefield", label: "Store - Whitefield", location: "Whitefield, Bangalore", status: "offline", last_seen_at: new Date(Date.now() - 7200000).toISOString(), shop_id: "shop_003" },
-  { device_id: "dev_004_hsr", label: "Store - HSR Layout", location: "HSR Layout, Bangalore", status: "online", last_seen_at: new Date(Date.now() - 60000).toISOString(), shop_id: "shop_004" },
+  { device_id: "dev_001_koramangala", label: "Store - Koramangala", location: "Koramangala, Bangalore", status: "streaming", last_seen_at: new Date().toISOString() },
+  { device_id: "dev_002_indiranagar", label: "Store - Indiranagar", location: "Indiranagar, Bangalore", status: "online", last_seen_at: new Date(Date.now() - 300000).toISOString() },
+  { device_id: "dev_003_whitefield", label: "Store - Whitefield", location: "Whitefield, Bangalore", status: "offline", last_seen_at: new Date(Date.now() - 7200000).toISOString() },
+  { device_id: "dev_004_hsr", label: "Store - HSR Layout", location: "HSR Layout, Bangalore", status: "online", last_seen_at: new Date(Date.now() - 60000).toISOString() },
 ];
 
 export default function SettingsPage() {
@@ -44,8 +44,9 @@ export default function SettingsPage() {
       return;
     }
     Promise.all([
-      apiFetch<PlanResponse>("/billing/plan"),
-      apiFetch<{ devices: Device[] }>("/devices").then(({ devices }) => {
+      apiFetch<RawPlanResponse>("/billing/plan"),
+      apiFetch<RawDevice[]>("/devices").then((raw) => {
+        const devices = raw.map(normalizeDevice);
         setDevices(devices);
         const init: Record<string, string> = {};
         devices.forEach((d) => { init[d.device_id] = d.label; });

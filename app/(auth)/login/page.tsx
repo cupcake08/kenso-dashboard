@@ -28,6 +28,7 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     try {
+      if (!auth) throw new Error("Firebase not initialized");
       await signInWithEmailAndPassword(auth, email, password);
       router.push("/dashboard/devices");
     } catch (err: unknown) {

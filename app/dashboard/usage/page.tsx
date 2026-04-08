@@ -3,18 +3,18 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { TrendingUp, RefreshCw } from "lucide-react";
 import { auth } from "@/lib/firebase";
-import { apiFetch } from "@/lib/api";
-import type { CreditBalance, Transaction } from "@/types/api";
+import { apiFetch, normalizeCredits } from "@/lib/api";
+import type { Transaction, RawCreditsResponse } from "@/types/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { TransactionBadge } from "@/components/ui/badge-type";
 import { Skeleton, TransactionSkeleton } from "@/components/ui/skeleton";
 
-const DEMO_BALANCE: CreditBalance = { balance: 24850, last_updated: new Date().toISOString() };
+const DEMO_BALANCE = 24850;
 const DEMO_TRANSACTIONS: Transaction[] = [
-  { id: "txn_001", type: "topup", amount: 10000, balance_after: 24850, description: "Credit top-up", created_at: new Date(Date.now() - 86400000).toISOString() },
-  { id: "txn_002", type: "analysis", amount: -350, balance_after: 14850, description: "Audio analysis — 35 windows", created_at: new Date(Date.now() - 172800000).toISOString() },
-  { id: "txn_003", type: "analysis", amount: -700, balance_after: 15200, description: "Audio analysis — 70 windows", created_at: new Date(Date.now() - 259200000).toISOString() },
+  { id: "txn_001", type: "topup", amount: 10000, description: "Credit top-up", created_at: new Date(Date.now() - 86400000).toISOString() },
+  { id: "txn_002", type: "analysis", amount: -350, description: "Audio analysis — 35 windows", created_at: new Date(Date.now() - 172800000).toISOString() },
+  { id: "txn_003", type: "analysis", amount: -700, description: "Audio analysis — 70 windows", created_at: new Date(Date.now() - 259200000).toISOString() },
 ];
 
 function useCountUp(target: number, duration = 600) {
@@ -49,19 +49,19 @@ function TransactionRow({ txn }: { txn: Transaction }) {
         </span>
       </td>
       <td className="py-3 px-4 text-muted-foreground">
-        {txn.balance_after.toLocaleString()}
+        {txn.description || "—"}
       </td>
     </tr>
   );
 }
 
 export default function UsagePage() {
-  const [balance, setBalance] = useState<CreditBalance | null>(null);
+  const [balance, setBalance] = useState<number>(0);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const count = useCountUp(balance?.balance ?? 0);
+  const count = useCountUp(balance);
 
   useEffect(() => {
     if (process.env.NEXT_PUBLIC_DEMO_MODE === "true") {
@@ -74,7 +74,8 @@ export default function UsagePage() {
       setLoading(false);
       return;
     }
-    apiFetch<{ balance: CreditBalance; transactions: Transaction[] }>("/credits")
+    apiFetch<RawCreditsResponse>("/credits")
+      .then(normalizeCredits)
       .then(({ balance, transactions }) => {
         setBalance(balance);
         setTransactions(transactions);
@@ -104,7 +105,7 @@ export default function UsagePage() {
                 <th className="py-3 px-4 font-medium">Date</th>
                 <th className="py-3 px-4 font-medium">Type</th>
                 <th className="py-3 px-4 font-medium">Amount</th>
-                <th className="py-3 px-4 font-medium">Balance</th>
+                <th className="py-3 px-4 font-medium">Description</th>
               </tr>
             </thead>
             <tbody>
@@ -144,7 +145,9 @@ export default function UsagePage() {
                   {count.toLocaleString()}
                 </motion.p>
                 <p className="mt-2 text-xs text-muted-foreground">
-                  Last updated: {balance?.last_updated ? new Date(balance.last_updated).toLocaleString() : "—"}
+                  {transactions.length > 0
+                    ? `Last activity: ${new Date(transactions[0].created_at).toLocaleString()}`
+                    : "No activity yet"}
                 </p>
               </div>
               <div className="flex items-center gap-3">
@@ -177,7 +180,7 @@ export default function UsagePage() {
                   <th className="py-3 px-4 font-medium">Date</th>
                   <th className="py-3 px-4 font-medium">Type</th>
                   <th className="py-3 px-4 font-medium">Amount</th>
-                  <th className="py-3 px-4 font-medium">Balance</th>
+                  <th className="py-3 px-4 font-medium">Description</th>
                 </tr>
               </thead>
               <tbody>

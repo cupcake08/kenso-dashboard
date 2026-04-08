@@ -4,22 +4,21 @@ import { useRef, useEffect, useCallback } from "react";
 
 interface WaveformProps {
   playing: boolean;
+  audioLevel?: number; // 0-1 real audio level from WebRTC analyser
   barCount?: number;
   className?: string;
 }
 
-export function Waveform({ playing, barCount = 48, className }: WaveformProps) {
+export function Waveform({ playing, audioLevel = 0, barCount = 48, className }: WaveformProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animRef = useRef<number>(0);
-  const barsRef = useRef<Float32Array>(() => {
-    const initial = new Float32Array(barCount);
-    for (let i = 0; i < barCount; i++) {
-      initial[i] = 0.08 + Math.random() * 0.04;
-    }
-    return initial;
-  });
+  const barsRef = useRef<Float32Array>(new Float32Array(barCount));
+  // Initialize bars with small random values (lazy init on first draw)
+  const barsInitialized = useRef(false);
   const targetsRef = useRef<Float32Array>(new Float32Array(barCount));
   const tickRef = useRef(0);
+  const levelRef = useRef(audioLevel);
+  levelRef.current = audioLevel;
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -38,15 +37,27 @@ export function Waveform({ playing, barCount = 48, className }: WaveformProps) {
     const bars = barsRef.current;
     const targets = targetsRef.current;
 
+    // Initialize bars with small random values on first frame
+    if (!barsInitialized.current) {
+      for (let i = 0; i < barCount; i++) {
+        bars[i] = 0.08 + Math.random() * 0.04;
+      }
+      barsInitialized.current = true;
+    }
+
     // Update targets periodically
     tickRef.current++;
     if (playing && tickRef.current % 6 === 0) {
+      const level = levelRef.current;
       for (let i = 0; i < barCount; i++) {
         // Natural-looking amplitudes: center bars taller, edges shorter
         const center = barCount / 2;
         const dist = Math.abs(i - center) / center;
         const base = (1 - dist * 0.6) * 0.85;
-        targets[i] = base * (0.2 + Math.random() * 0.8);
+        // Mix real audio level with simulated randomness
+        const realComponent = level * (0.8 + Math.random() * 0.4);
+        const simComponent = base * (0.2 + Math.random() * 0.8);
+        targets[i] = base * (level > 0.01 ? realComponent * 0.7 + simComponent * 0.3 : simComponent);
       }
     } else if (!playing && tickRef.current % 6 === 0) {
       for (let i = 0; i < barCount; i++) {
