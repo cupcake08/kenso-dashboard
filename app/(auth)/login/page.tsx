@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { auth } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+
+// In demo mode, auth is bypassed — Firebase not needed
+const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -17,6 +18,13 @@ export default function LoginPage() {
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
+    if (DEMO_MODE) {
+      router.push("/dashboard/devices");
+      return;
+    }
+    // Real Firebase auth path — only reached when DEMO_MODE is false
+    const { signInWithEmailAndPassword } = await import("firebase/auth");
+    const { auth } = await import("@/lib/firebase");
     setError("");
     setLoading(true);
     try {
@@ -31,37 +39,56 @@ export default function LoginPage() {
   }
 
   return (
-    <Card className="w-full max-w-sm p-8">
-      <div className="mb-6 text-center">
-        <h1 className="text-2xl font-bold text-slate-50">Kenso</h1>
-        <p className="mt-1 text-sm text-slate-400">Sign in to your dashboard</p>
+    <div className="flex min-h-screen">
+      {/* Brand side */}
+      <div className="hidden md:flex flex-col justify-center pl-16 bg-background">
+        <div className="relative">
+          {/* decorative vertical line */}
+          <div className="absolute -left-6 top-0 bottom-0 w-1 bg-primary rounded-full" />
+          <h1 className="text-7xl font-bold text-foreground tracking-tight">Kenso</h1>
+          <p className="mt-4 text-lg text-muted-foreground max-w-xs leading-relaxed">
+            Real-time shop intelligence for modern retail.
+          </p>
+        </div>
       </div>
-      <form onSubmit={handleLogin} className="space-y-4">
-        <div>
-          <Input
-            type="email"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
-        </div>
-        <div>
-          <Input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-        </div>
-        {error && (
-          <p className="text-sm text-red-400">{error}</p>
-        )}
-        <Button type="submit" className="w-full" disabled={loading}>
-          {loading ? "Signing in…" : "Sign In"}
-        </Button>
-      </form>
-    </Card>
+      {/* Form side */}
+      <div className="flex flex-1 items-center justify-center p-6">
+        <Card className="w-full max-w-sm p-8">
+          <div className="mb-6">
+            <h1 className="text-2xl font-bold text-foreground">Kenso</h1>
+          </div>
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <label htmlFor="email" className="sr-only">Email</label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="Email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <label htmlFor="password" className="sr-only">Password</label>
+              <Input
+                id="password"
+                type="password"
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </div>
+            {error && (
+              <p role="alert" className="text-sm text-red-400">{error}</p>
+            )}
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading ? "Signing in…" : "Sign in"}
+            </Button>
+          </form>
+        </Card>
+      </div>
+    </div>
   );
 }

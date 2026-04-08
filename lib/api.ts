@@ -1,12 +1,12 @@
-import { getIdToken } from "firebase/auth";
 import { auth } from "./firebase";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
 
 async function getAuthHeader(): Promise<Record<string, string>> {
-  const user = auth.currentUser;
+  const user = auth?.currentUser;
   if (!user) throw new Error("Not authenticated");
+  const { getIdToken } = await import("firebase/auth");
   const token = await getIdToken(user);
   return { Authorization: `Bearer ${token}` };
 }

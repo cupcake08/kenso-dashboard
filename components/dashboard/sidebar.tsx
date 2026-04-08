@@ -20,22 +20,23 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const pathname = usePathname();
 
   return (
-    <aside
-      className={cn(
-        "flex flex-col border-r border-slate-800 bg-slate-900 transition-all duration-300",
-        collapsed ? "w-16" : "w-56"
-      )}
+    <motion.aside
+      layout
+      className="flex flex-col border-r border-border bg-background overflow-hidden"
+      animate={{ width: collapsed ? 64 : 224 }}
+      transition={{ type: "spring", stiffness: 300, damping: 30 }}
     >
       {/* Logo */}
-      <div className="flex h-16 items-center gap-3 border-b border-slate-800 px-4">
-        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-emerald-600">
-          <Layers className="h-4 w-4 text-white" />
+      <div className="flex h-16 items-center gap-3 border-b border-border px-4">
+        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary">
+          <Layers className="h-4 w-4 text-primary-foreground" />
         </div>
         {!collapsed && (
           <motion.span
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="text-base font-semibold text-slate-50"
+            exit={{ opacity: 0 }}
+            className="text-base font-semibold text-foreground whitespace-nowrap"
           >
             Kenso
           </motion.span>
@@ -51,14 +52,14 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
               key={href}
               href={href}
               className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150",
+                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                 active
-                  ? "bg-emerald-950/50 text-emerald-400 border-l-2 border-emerald-500"
-                  : "text-slate-400 hover:bg-slate-800 hover:text-slate-50"
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
               )}
             >
               <Icon className="h-5 w-5 flex-shrink-0" />
-              {!collapsed && <span>{label}</span>}
+              {!collapsed && <span className="whitespace-nowrap">{label}</span>}
             </Link>
           );
         })}
@@ -67,10 +68,11 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
       {/* Collapse toggle */}
       <button
         onClick={onToggle}
-        className="flex h-12 items-center justify-center border-t border-slate-800 text-slate-500 hover:text-slate-50 transition-colors"
+        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        className="flex h-12 items-center justify-center border-t border-border text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       >
         {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
       </button>
-    </aside>
+    </motion.aside>
   );
 }

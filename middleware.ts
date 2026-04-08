@@ -4,7 +4,7 @@ import type { NextRequest } from "next/server";
 export function middleware(request: NextRequest) {
   const session = request.cookies.get("firebase-token");
 
-  if (request.nextUrl.pathname.startsWith("/dashboard") && !session) {
+  if (request.nextUrl.pathname.startsWith("/dashboard") && !session && process.env.NEXT_PUBLIC_DEMO_MODE !== "true") {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 

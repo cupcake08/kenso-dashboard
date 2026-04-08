@@ -2,19 +2,78 @@
 @tailwind components;
 @tailwind utilities;
 
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 @layer base {
   :root {
     --background: 222 47% 4%;
     --foreground: 210 40% 98%;
     --accent: 160 84% 39%;
     --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 55%;
+    --card: 217 33% 11%;
+    --card-foreground: 210 40% 98%;
+    --border: 215 14% 21%;
+    --input: 215 14% 21%;
+    --primary: 160 84% 39%;
+    --primary-foreground: 222 47% 4%;
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 98%;
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --ring: 160 84% 39%;
+    --sidebar-width: 14rem;
+    --sidebar-collapsed: 4rem;
   }
 
   * {
-    @apply border-slate-800;
+    @apply border-border;
   }
 
   body {
-    @apply bg-slate-950 text-slate-50 antialiased;
+    @apply bg-background text-foreground antialiased;
+  }
+}
+
+/* View Transitions */
+@supports (view-transition-name: none) {
+  ::view-transition-old(root) {
+    animation: none;
+  }
+  ::view-transition-new(root) {
+    animation: fade-in 0.2s ease-out;
+  }
+  ::view-transition-group(device-card) {
+    animation-duration: 0.3s;
+  }
+  ::view-transition-old(device-card) {
+    animation: none;
+  }
+  ::view-transition-new(device-card) {
+    animation: morph-in 0.3s cubic-bezier(0.33, 1, 0.68, 1);
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes morph-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
   }
 }

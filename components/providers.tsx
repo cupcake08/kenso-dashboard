@@ -1,30 +1,30 @@
 "use client";
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useState } from "react";
-import { Toaster } from "sonner";
-import { onAuthStateChanged } from "firebase/auth";
 import { useEffect } from "react";
-import { auth } from "@/lib/firebase";
+import { MotionConfig } from "framer-motion";
 
 export function Providers({ children }: { children: React.ReactNode }) {
-  const [queryClient] = useState(() => new QueryClient());
-
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        user.getIdToken().then((token) => {
-          document.cookie = `session=${token}; path=/; secure; samesite=strict`;
+    if (process.env.NEXT_PUBLIC_DEMO_MODE === "true") return;
+    let unsubscribe: (() => void) | undefined;
+    import("firebase/auth").then(({ onAuthStateChanged }) => {
+      import("@/lib/firebase").then(({ auth }) => {
+        if (!auth) return;
+        unsubscribe = onAuthStateChanged(auth, (user) => {
+          if (user) {
+            user.getIdToken().then((token) => {
+              document.cookie = `firebase-token=${token}; path=/; secure; samesite=strict; max-age=${60 * 60}`;
+            });
+          }
         });
-      }
+      });
     });
-    return unsubscribe;
+    return () => unsubscribe?.();
   }, []);
 
   return (
-    <QueryClientProvider client={queryClient}>
+    <MotionConfig reducedMotion="user">
       {children}
-      <Toaster />
-    </QueryClientProvider>
+    </MotionConfig>
   );
 }
