@@ -8,6 +8,7 @@ export type ListenState = "idle" | "connecting" | "connected" | "error";
 
 interface ListenClientOpts {
   deviceId: string;
+  shopId: string;
   onStateChange: (state: ListenState) => void;
   onAudioLevel: (level: number) => void;
   onTrack: (stream: MediaStream) => void;
@@ -44,14 +45,17 @@ export class ListenClient {
         );
 
       // 3. Open WebSocket to SFU
-      await this.openWS(sfu_url);
+      // For local dev, rewrite production SFU URL to localhost
+      const wsUrl = this.rewriteSfuUrl(sfu_url);
+      await this.openWS(wsUrl);
 
       // 4. Send join message
-      // room_id format: {shopID}_{micID} — we only have mic_id from token response
-      // The SFU will resolve the room from the mic_id
+      // room_id format: {shopID}_{micID} — matches ESP32 publisher format
+      // If shopId is not available, try mic_id alone (SFU may resolve)
+      const roomId = this.opts.shopId ? `${this.opts.shopId}_${mic_id}` : mic_id;
       this.sendWS({
         type: "join",
-        room_id: mic_id,
+        room_id: roomId,
         user_id: user.uid,
         role: "subscriber",
         token: firebaseToken,
@@ -194,6 +198,17 @@ export class ListenClient {
       const rms = Math.sqrt(sum / dataArray.length);
       this.opts.onAudioLevel(rms);
     }, 50);
+  }
+
+  /** Rewrite production SFU URL to local dev if needed */
+  private rewriteSfuUrl(sfuUrl: string): string {
+    if (typeof window === "undefined") return sfuUrl;
+    const apiBase = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
+    if (apiBase.includes("localhost") || apiBase.includes("127.0.0.1")) {
+      const port = new URL(apiBase).port || "8080";
+      return `ws://localhost:${port}/ws`;
+    }
+    return sfuUrl;
   }
 
   private sendWS(msg: Record<string, unknown>): void {

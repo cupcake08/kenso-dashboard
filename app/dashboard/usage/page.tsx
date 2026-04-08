@@ -1,7 +1,7 @@
 "use client";
-import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
-import { TrendingUp, RefreshCw } from "lucide-react";
+import { useEffect, useState, useCallback } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { TrendingUp, RefreshCw, X } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { apiFetch, normalizeCredits } from "@/lib/api";
 import type { Transaction, RawCreditsResponse } from "@/types/api";
@@ -17,13 +17,14 @@ const DEMO_TRANSACTIONS: Transaction[] = [
   { id: "txn_003", type: "analysis", amount: -700, description: "Audio analysis — 70 windows", created_at: new Date(Date.now() - 259200000).toISOString() },
 ];
 
+const TOPUP_OPTIONS = [500, 1000, 2500, 5000];
+
 function useCountUp(target: number, duration = 600) {
   const [value, setValue] = useState(0);
   useEffect(() => {
     const start = performance.now();
     const step = (now: number) => {
       const progress = Math.min((now - start) / duration, 1);
-      // ease out cubic
       const eased = 1 - Math.pow(1 - progress, 3);
       setValue(Math.floor(eased * target));
       if (progress < 1) requestAnimationFrame(step);
@@ -60,10 +61,13 @@ export default function UsagePage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [showTopup, setShowTopup] = useState(false);
+  const [topupAmount, setTopupAmount] = useState(1000);
+  const [topupStatus, setTopupStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
 
   const count = useCountUp(balance);
 
-  useEffect(() => {
+  const fetchCredits = useCallback(() => {
     if (process.env.NEXT_PUBLIC_DEMO_MODE === "true") {
       setBalance(DEMO_BALANCE);
       setTransactions(DEMO_TRANSACTIONS);
@@ -83,6 +87,39 @@ export default function UsagePage() {
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    fetchCredits();
+  }, [fetchCredits]);
+
+  async function handleTopup() {
+    setTopupStatus("submitting");
+    try {
+      if (process.env.NEXT_PUBLIC_DEMO_MODE === "true") {
+        // Simulate topup in demo mode
+        await new Promise((r) => setTimeout(r, 800));
+        setBalance((b) => b + topupAmount);
+        setTransactions((prev) => [
+          { id: `txn_demo_${Date.now()}`, type: "topup" as const, amount: topupAmount, description: "Credit top-up (demo)", created_at: new Date().toISOString() },
+          ...prev,
+        ]);
+      } else {
+        await apiFetch("/credits/topup", {
+          method: "POST",
+          body: JSON.stringify({ amount: topupAmount }),
+        });
+        // Refresh credits after topup
+        await fetchCredits();
+      }
+      setTopupStatus("success");
+      setTimeout(() => {
+        setTopupStatus("idle");
+        setShowTopup(false);
+      }, 1500);
+    } catch {
+      setTopupStatus("error");
+    }
+  }
 
   if (loading) {
     return (
@@ -139,9 +176,7 @@ export default function UsagePage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Credits Balance</p>
-                <motion.p
-                  className="mt-1 text-4xl font-bold tabular-nums text-foreground"
-                >
+                <motion.p className="mt-1 text-4xl font-bold tabular-nums text-foreground">
                   {count.toLocaleString()}
                 </motion.p>
                 <p className="mt-2 text-xs text-muted-foreground">
@@ -150,19 +185,98 @@ export default function UsagePage() {
                     : "No activity yet"}
                 </p>
               </div>
-              <div className="flex items-center gap-3">
-                <Button
-                  onClick={() => {/* TODO: topup modal */}}
-                  className="bg-primary hover:bg-primary/90"
-                >
-                  <TrendingUp className="h-4 w-4" />
-                  Top Up
-                </Button>
-              </div>
+              <Button
+                onClick={() => setShowTopup(true)}
+                className="bg-primary hover:bg-primary/90"
+              >
+                <TrendingUp className="h-4 w-4 mr-1.5" />
+                Top Up
+              </Button>
             </div>
           </CardContent>
         </Card>
       </motion.div>
+
+      {/* Top Up Modal */}
+      <AnimatePresence>
+        {showTopup && (
+          <motion.div
+            key="topup-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+            onClick={() => topupStatus !== "submitting" && setShowTopup(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 8 }}
+              transition={{ duration: 0.2 }}
+              className="w-full max-w-sm rounded-xl border border-border bg-background p-6 shadow-lg"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-5">
+                <h2 className="text-lg font-semibold text-foreground">Top Up Credits</h2>
+                <button
+                  onClick={() => setShowTopup(false)}
+                  disabled={topupStatus === "submitting"}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Quick amount buttons */}
+              <div className="grid grid-cols-2 gap-2 mb-4">
+                {TOPUP_OPTIONS.map((amt) => (
+                  <button
+                    key={amt}
+                    onClick={() => setTopupAmount(amt)}
+                    className={`rounded-lg border px-4 py-3 text-sm font-medium transition-colors ${
+                      topupAmount === amt
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground hover:border-muted-foreground/30 hover:text-foreground"
+                    }`}
+                  >
+                    {amt.toLocaleString()} credits
+                  </button>
+                ))}
+              </div>
+
+              {/* Custom amount */}
+              <div className="mb-5">
+                <label className="text-xs text-muted-foreground mb-1.5 block">Or enter custom amount</label>
+                <input
+                  type="number"
+                  min={100}
+                  value={topupAmount}
+                  onChange={(e) => setTopupAmount(Math.max(100, parseInt(e.target.value) || 100))}
+                  className="w-full rounded-lg border border-border bg-transparent px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+                {topupAmount < 100 && (
+                  <p className="mt-1 text-xs text-red-400">Minimum top-up is 100 credits</p>
+                )}
+              </div>
+
+              {/* Status messages */}
+              {topupStatus === "success" ? (
+                <p className="text-sm text-primary font-medium mb-4">Request submitted! An admin will process it shortly.</p>
+              ) : topupStatus === "error" ? (
+                <p className="text-sm text-red-400 mb-4">Failed to submit request. Please try again.</p>
+              ) : null}
+
+              <Button
+                onClick={handleTopup}
+                disabled={topupStatus === "submitting" || topupAmount < 100}
+                className="w-full bg-primary hover:bg-primary/90"
+              >
+                {topupStatus === "submitting" ? "Submitting…" : `Top Up ${topupAmount.toLocaleString()} Credits`}
+              </Button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Transaction history */}
       <div>
