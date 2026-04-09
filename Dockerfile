@@ -1,19 +1,19 @@
-FROM node:20-alpine AS base
+FROM oven/bun:1 AS base
 WORKDIR /app
 
 # Install dependencies only when needed
 FROM base AS deps
-COPY package.json package-lock.json* ./
-RUN npm ci --ignore-scripts
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
 
-# Rebuild native deps
+# Rebuild the source code only when needed
 FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN npm run build
+RUN bun run build
 
-# Production image
-FROM base AS runner
+# Production image, copy all the files and run next
+FROM oven/bun:1-slim AS runner
 ENV NODE_ENV=production
 ENV NEXT_PUBLIC_API_BASE=${NEXT_PUBLIC_API_BASE}
 
