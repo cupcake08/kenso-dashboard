@@ -12,10 +12,10 @@ import { SettingsSkeleton } from "@/components/ui/skeleton";
 
 const DEMO_PLAN: PlanResponse = { plan: "Enterprise", billing_cycle: "prepaid", price_per_month: 29900 };
 const DEMO_DEVICES_SETTINGS: Device[] = [
-  { device_id: "dev_001_koramangala", label: "Store - Koramangala", location: "Koramangala, Bangalore", status: "streaming", last_seen_at: new Date().toISOString() },
-  { device_id: "dev_002_indiranagar", label: "Store - Indiranagar", location: "Indiranagar, Bangalore", status: "online", last_seen_at: new Date(Date.now() - 300000).toISOString() },
-  { device_id: "dev_003_whitefield", label: "Store - Whitefield", location: "Whitefield, Bangalore", status: "offline", last_seen_at: new Date(Date.now() - 7200000).toISOString() },
-  { device_id: "dev_004_hsr", label: "Store - HSR Layout", location: "HSR Layout, Bangalore", status: "online", last_seen_at: new Date(Date.now() - 60000).toISOString() },
+  { device_id: "dev_001_koramangala", shop_id: "shop_001", label: "Store - Koramangala", location: "Koramangala, Bangalore", status: "streaming", last_seen_at: new Date().toISOString() },
+  { device_id: "dev_002_indiranagar", shop_id: "shop_002", label: "Store - Indiranagar", location: "Indiranagar, Bangalore", status: "online", last_seen_at: new Date(Date.now() - 300000).toISOString() },
+  { device_id: "dev_003_whitefield", shop_id: "shop_003", label: "Store - Whitefield", location: "Whitefield, Bangalore", status: "offline", last_seen_at: new Date(Date.now() - 7200000).toISOString() },
+  { device_id: "dev_004_hsr", shop_id: "shop_004", label: "Store - HSR Layout", location: "HSR Layout, Bangalore", status: "online", last_seen_at: new Date(Date.now() - 60000).toISOString() },
 ];
 
 export default function SettingsPage() {

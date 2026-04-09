@@ -3,6 +3,7 @@
 
 export interface RawDevice {
   mic_id: string;
+  shop_id: string;
   label: string;
   location: string;
   status: "active" | "soft_deleted";
@@ -78,6 +79,7 @@ export interface ListenTokenResponse {
 
 export interface Device {
   device_id: string;
+  shop_id: string;
   label: string;
   location: string;
   status: "online" | "offline" | "streaming";

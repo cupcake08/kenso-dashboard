@@ -57,6 +57,7 @@ function mapDeviceStatus(status: string): Device["status"] {
 export function normalizeDevice(raw: RawDevice): Device {
   return {
     device_id: raw.mic_id,
+    shop_id: raw.shop_id,
     label: raw.label,
     location: raw.location,
     status: mapDeviceStatus(raw.status),

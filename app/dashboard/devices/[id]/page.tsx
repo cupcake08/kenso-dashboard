@@ -18,6 +18,7 @@ type Tab = "listen" | "recent" | "report";
 
 const DEMO_DEVICE: Device = {
   device_id: "dev_001_koramangala",
+  shop_id: "shop_001",
   label: "Store - Koramangala",
   location: "Koramangala, Bangalore",
   status: "streaming",
@@ -61,7 +62,7 @@ export default function DeviceDetailPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const { state: listenState, audioLevel, toggle: toggleListen } = useListenLive(
     deviceId,
-    process.env.NEXT_PUBLIC_DEMO_MODE === "true" ? "shop_001" : ""
+    device?.shop_id ?? ""
   );
 
   useEffect(() => {
