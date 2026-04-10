@@ -1,94 +1,291 @@
 "use client";
-import { useEffect, useState } from "react";
-import { Loader2, ArrowLeft, Calendar, ToggleLeft, ToggleRight } from "lucide-react";
+import { useEffect, useState, useCallback } from "react";
+import { Loader2, ArrowLeft, Calendar, Plus, Pencil, PauseCircle, PlayCircle, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { listSchedules, apiFetch } from "@/lib/api";
+import { motion, AnimatePresence } from "framer-motion";
+import { listSchedules, pauseSchedule, resumeSchedule, createSchedule, apiFetch } from "@/lib/api";
 import type { AnalysisSchedule } from "@/types/analysis";
 import { BadgeVariant } from "@/components/ui/badge-variant";
 import { Button } from "@/components/ui/button";
+import { ScheduleForm, type CreateSchedulePayload } from "@/components/dashboard/schedule-form";
 import { cn } from "@/lib/utils";
 
 const IS_DEMO = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
 const DEMO_SCHEDULES: AnalysisSchedule[] = [
   {
-    scheduleId: "sched_demo_01", templateId: "tmpl_staff", templateName: "Staff Performance Review",
-    micIds: ["mic_lobby_01", "mic_counter_02"], scheduleType: "recurring", recurrenceRule: "0 9 * * 1-6",
-    analysisWindowHours: 9, timezone: "Asia/Kolkata", enabled: true,
-    nextRunAt: new Date(Date.now() + 86400000).toISOString(), lastRunAt: new Date(Date.now() - 86400000).toISOString(),
-    runCount: 12, createdAt: new Date(Date.now() - 30 * 86400000).toISOString(),
+    scheduleId: "sched_demo_01",
+    templateId: "tmpl_staff",
+    templateName: "Staff Performance Review",
+    micIds: ["mic_lobby_01", "mic_counter_02"],
+    shopIds: [],
+    scheduleType: "recurring",
+    recurrenceRule: "0 22 * * 1-6",
+    analysisWindowHours: 9,
+    analysisStartTime: "09:00",
+    analysisEndTime: "18:00",
+    timezone: "Asia/Kolkata",
+    enabled: true,
+    pausedUntil: undefined,
+    pauseReason: undefined,
+    nextRunAt: new Date(Date.now() + 86400000).toISOString(),
+    lastRunAt: new Date(Date.now() - 86400000).toISOString(),
+    runCount: 12,
+    createdAt: new Date(Date.now() - 30 * 86400000).toISOString(),
   },
   {
-    scheduleId: "sched_demo_02", templateId: "tmpl_compliance", templateName: "Compliance & Policy Audit",
-    micIds: ["mic_counter_02"], scheduleType: "recurring", recurrenceRule: "0 18 * * 5",
-    analysisWindowHours: 10, timezone: "Asia/Kolkata", enabled: false,
-    nextRunAt: "", lastRunAt: new Date(Date.now() - 7 * 86400000).toISOString(),
-    runCount: 3, createdAt: new Date(Date.now() - 21 * 86400000).toISOString(),
+    scheduleId: "sched_demo_02",
+    templateId: "tmpl_compliance",
+    templateName: "Compliance Audit",
+    micIds: [],
+    shopIds: ["shop_001", "shop_002"],
+    scheduleType: "recurring",
+    recurrenceRule: "0 8 * * 1,5",
+    analysisWindowHours: 12,
+    analysisStartTime: "08:00",
+    analysisEndTime: "20:00",
+    timezone: "Asia/Kolkata",
+    enabled: true,
+    pausedUntil: new Date(Date.now() + 4 * 86400000).toISOString(),
+    pauseReason: "Diwali week",
+    nextRunAt: new Date(Date.now() + 5 * 86400000).toISOString(),
+    runCount: 8,
+    createdAt: new Date(Date.now() - 14 * 86400000).toISOString(),
   },
 ];
 
-function formatNextRun(iso: string): string {
+// Human-readable cron
+function cronToHuman(cron: string): string {
+  const parts = cron.split(" ");
+  if (parts.length !== 5) return cron;
+  const minute = parseInt(parts[0]);
+  const hour = parseInt(parts[1]);
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const dows = parts[4];
+  let dayStr: string;
+  if (dows === "*") {
+    dayStr = "Daily";
+  } else if (dows === "1-5") {
+    dayStr = "Mon\u2013Fri";
+  } else if (dows === "1-6") {
+    dayStr = "Mon\u2013Sat";
+  } else {
+    dayStr = dows.split(",").map((d) => dayNames[parseInt(d)] || d).join(", ");
+  }
+  const h12 = hour % 12 || 12;
+  const ampm = hour < 12 ? "AM" : "PM";
+  const timeStr = `${h12}:${minute.toString().padStart(2, "0")} ${ampm}`;
+  return `${dayStr} at ${timeStr}`;
+}
+
+function formatRelative(iso: string | undefined): string {
   if (!iso) return "—";
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "—";
-  return d.toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const diffMs = d.getTime() - Date.now();
+  const diffMin = Math.round(diffMs / 60000);
+  if (Math.abs(diffMin) < 60) return diffMin >= 0 ? `in ${diffMin}m` : `${-diffMin}m ago`;
+  const diffH = Math.round(diffMin / 60);
+  if (Math.abs(diffH) < 24) return diffH >= 0 ? `in ${diffH}h` : `${-diffH}h ago`;
+  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 }
+
+function targetLabel(s: AnalysisSchedule): string {
+  if (s.shopIds && s.shopIds.length > 0) {
+    return `${s.shopIds.length} location${s.shopIds.length !== 1 ? "s" : ""}`;
+  }
+  return `${s.micIds.length} device${s.micIds.length !== 1 ? "s" : ""}`;
+}
+
+type PauseState = { scheduleId: string; date: string };
 
 export default function SchedulesPage() {
   const router = useRouter();
   const [schedules, setSchedules] = useState<AnalysisSchedule[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [toggling, setToggling] = useState<string | null>(null);
 
-  useEffect(() => {
+  // Show form: null = hidden, "new" = create, scheduleId = edit
+  const [formMode, setFormMode] = useState<null | "new" | string>(null);
+  const [actionPending, setActionPending] = useState<string | null>(null);
+
+  // Inline pause picker state
+  const [pauseState, setPauseState] = useState<PauseState | null>(null);
+
+  const loadSchedules = useCallback(() => {
     if (IS_DEMO) {
       setSchedules(DEMO_SCHEDULES);
       setLoading(false);
       return;
     }
-    // Wait for Firebase auth before making API calls
+    listSchedules()
+      .then(setSchedules)
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (IS_DEMO) { loadSchedules(); return; }
     let unsub: (() => void) | undefined;
     import("firebase/auth").then(({ onAuthStateChanged }) => {
       import("@/lib/firebase").then(({ auth }) => {
         if (!auth) { setLoading(false); return; }
         unsub = onAuthStateChanged(auth, (user: unknown) => {
           if (!user) { setLoading(false); return; }
-          listSchedules()
-            .then(setSchedules)
-            .catch((e: Error) => setError(e.message))
-            .finally(() => setLoading(false));
+          loadSchedules();
         });
       });
     });
     return () => unsub?.();
-  }, []);
+  }, [loadSchedules]);
 
-  async function toggleSchedule(s: AnalysisSchedule) {
-    setToggling(s.scheduleId);
-    try {
-      if (IS_DEMO) {
-        await new Promise((r) => setTimeout(r, 300));
+  const editingSchedule = formMode && formMode !== "new"
+    ? schedules.find((s) => s.scheduleId === formMode) ?? null
+    : null;
+
+  async function handleFormSubmit(data: CreateSchedulePayload) {
+    if (IS_DEMO) {
+      await new Promise((r) => setTimeout(r, 500));
+      if (formMode === "new") {
+        const tmplNames: Record<string, string> = {
+          tmpl_staff: "Staff Performance Review",
+          tmpl_compliance: "Compliance Audit",
+          tmpl_customer: "Customer Sentiment Analysis",
+          tmpl_sales: "Sales Performance Tracker",
+        };
+        const newSched: AnalysisSchedule = {
+          scheduleId: `sched_demo_${Date.now()}`,
+          templateId: data.template_id,
+          templateName: tmplNames[data.template_id] ?? data.template_id,
+          micIds: data.mic_ids ?? [],
+          shopIds: data.shop_ids ?? [],
+          scheduleType: data.schedule_type,
+          recurrenceRule: data.recurrence_rule,
+          analysisWindowHours: 9,
+          analysisStartTime: data.analysis_start_time,
+          analysisEndTime: data.analysis_end_time,
+          timezone: data.timezone,
+          freeTextNotes: data.free_text_notes,
+          enabled: true,
+          nextRunAt: new Date(data.next_run_unix * 1000).toISOString(),
+          runCount: 0,
+          createdAt: new Date().toISOString(),
+        };
+        setSchedules((prev) => [newSched, ...prev]);
+      } else if (editingSchedule) {
         setSchedules((prev) =>
-          prev.map((x) => x.scheduleId === s.scheduleId ? { ...x, enabled: !x.enabled } : x)
+          prev.map((s) =>
+            s.scheduleId === editingSchedule.scheduleId
+              ? {
+                  ...s,
+                  templateId: data.template_id,
+                  micIds: data.mic_ids ?? [],
+                  shopIds: data.shop_ids ?? [],
+                  scheduleType: data.schedule_type,
+                  recurrenceRule: data.recurrence_rule,
+                  analysisStartTime: data.analysis_start_time,
+                  analysisEndTime: data.analysis_end_time,
+                  timezone: data.timezone,
+                  freeTextNotes: data.free_text_notes,
+                  nextRunAt: new Date(data.next_run_unix * 1000).toISOString(),
+                }
+              : s
+          )
         );
-        return;
       }
-      await apiFetch(`/analysis/schedules/${s.scheduleId}`, {
-        method: "PUT",
-        body: JSON.stringify({ enabled: !s.enabled }),
+      setFormMode(null);
+      return;
+    }
+
+    if (formMode === "new") {
+      await createSchedule({
+        template_id: data.template_id,
+        mic_ids: data.mic_ids,
+        shop_ids: data.shop_ids,
+        schedule_type: data.schedule_type,
+        recurrence_rule: data.recurrence_rule,
+        analysis_start_time: data.analysis_start_time,
+        analysis_end_time: data.analysis_end_time,
+        timezone: data.timezone,
+        free_text_notes: data.free_text_notes,
+        next_run_unix: data.next_run_unix,
       });
-      setSchedules((prev) =>
-        prev.map((x) => x.scheduleId === s.scheduleId ? { ...x, enabled: !x.enabled } : x)
-      );
+      loadSchedules();
+    } else if (editingSchedule) {
+      await apiFetch(`/analysis/schedules/${editingSchedule.scheduleId}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          template_id: data.template_id,
+          mic_ids: data.mic_ids,
+          shop_ids: data.shop_ids,
+          schedule_type: data.schedule_type,
+          recurrence_rule: data.recurrence_rule,
+          analysis_start_time: data.analysis_start_time,
+          analysis_end_time: data.analysis_end_time,
+          timezone: data.timezone,
+          free_text_notes: data.free_text_notes,
+          next_run_unix: data.next_run_unix,
+        }),
+      });
+      loadSchedules();
+    }
+    setFormMode(null);
+  }
+
+  async function handlePause(s: AnalysisSchedule) {
+    if (!pauseState || pauseState.scheduleId !== s.scheduleId || !pauseState.date) return;
+    setActionPending(s.scheduleId);
+    try {
+      const until = new Date(pauseState.date).toISOString();
+      if (IS_DEMO) {
+        await new Promise((r) => setTimeout(r, 400));
+        setSchedules((prev) =>
+          prev.map((x) =>
+            x.scheduleId === s.scheduleId ? { ...x, pausedUntil: until } : x
+          )
+        );
+      } else {
+        await pauseSchedule(s.scheduleId, until);
+        setSchedules((prev) =>
+          prev.map((x) =>
+            x.scheduleId === s.scheduleId ? { ...x, pausedUntil: until } : x
+          )
+        );
+      }
+      setPauseState(null);
     } catch {
       // ignore
     } finally {
-      setToggling(null);
+      setActionPending(null);
     }
   }
 
-  async function deleteSchedule(s: AnalysisSchedule) {
+  async function handleResume(s: AnalysisSchedule) {
+    setActionPending(s.scheduleId);
+    try {
+      if (IS_DEMO) {
+        await new Promise((r) => setTimeout(r, 400));
+        setSchedules((prev) =>
+          prev.map((x) =>
+            x.scheduleId === s.scheduleId ? { ...x, pausedUntil: undefined, pauseReason: undefined } : x
+          )
+        );
+      } else {
+        await resumeSchedule(s.scheduleId);
+        setSchedules((prev) =>
+          prev.map((x) =>
+            x.scheduleId === s.scheduleId ? { ...x, pausedUntil: undefined, pauseReason: undefined } : x
+          )
+        );
+      }
+    } catch {
+      // ignore
+    } finally {
+      setActionPending(null);
+    }
+  }
+
+  async function handleDelete(s: AnalysisSchedule) {
     if (!confirm(`Delete schedule for "${s.templateName}"?`)) return;
     try {
       if (IS_DEMO) {
@@ -112,85 +309,294 @@ export default function SchedulesPage() {
 
   return (
     <div className="space-y-6">
+      {/* Back nav */}
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="sm" onClick={() => router.push("/dashboard/analysis")}>
           <ArrowLeft className="h-4 w-4 mr-2" />Back
         </Button>
       </div>
 
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Schedules</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Recurring and one-time analysis schedules</p>
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Schedules</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Recurring and one-time analysis schedules</p>
+        </div>
+        <Button
+          onClick={() => setFormMode(formMode === "new" ? null : "new")}
+          variant={formMode === "new" ? "outline" : "default"}
+        >
+          <Plus className="h-4 w-4 mr-2" />
+          {formMode === "new" ? "Cancel" : "New Schedule"}
+        </Button>
       </div>
 
       {error && <p className="text-sm text-red-400">{error}</p>}
 
+      {/* Form (animated) */}
+      <AnimatePresence>
+        {formMode !== null && (
+          <motion.div
+            key={formMode}
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.18 }}
+          >
+            <ScheduleForm
+              initial={editingSchedule}
+              onSubmit={handleFormSubmit}
+              onCancel={() => setFormMode(null)}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* List */}
       {schedules.length === 0 ? (
         <div className="rounded-xl border border-border bg-card/50 p-10 text-center">
           <Calendar className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
-          <p className="text-sm text-muted-foreground">No schedules yet. Create one from the Analysis page.</p>
+          <p className="text-sm text-muted-foreground">No schedules yet. Click &ldquo;New Schedule&rdquo; to create one.</p>
         </div>
       ) : (
-        <div className="rounded-xl border border-border overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="border-b border-border bg-muted/30">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Template</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Type</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Next Run</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Runs</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Status</th>
-                <th className="px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {schedules.map((s) => (
-                <tr key={s.scheduleId} className="hover:bg-muted/20">
-                  <td className="px-4 py-3">
-                    <p className="font-medium text-foreground">{s.templateName}</p>
-                    <p className="text-xs text-muted-foreground">{s.micIds.length} device{s.micIds.length !== 1 ? "s" : ""}</p>
-                  </td>
-                  <td className="px-4 py-3">
-                    <BadgeVariant variant="blue" className="text-xs capitalize">
-                      {s.scheduleType.replace("_", " ")}
-                    </BadgeVariant>
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground text-xs">
-                    {formatNextRun(s.nextRunAt)}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">{s.runCount}</td>
-                  <td className="px-4 py-3">
-                    <button
-                      onClick={() => toggleSchedule(s)}
-                      disabled={toggling === s.scheduleId}
-                      className={cn(
-                        "flex items-center gap-1.5 text-xs font-medium transition-colors",
-                        s.enabled ? "text-emerald-400" : "text-muted-foreground"
-                      )}
-                    >
-                      {toggling === s.scheduleId ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : s.enabled ? (
-                        <ToggleRight className="h-5 w-5" />
-                      ) : (
-                        <ToggleLeft className="h-5 w-5" />
-                      )}
-                      {s.enabled ? "Enabled" : "Disabled"}
-                    </button>
-                  </td>
-                  <td className="px-4 py-3">
-                    <button
-                      onClick={() => deleteSchedule(s)}
-                      className="text-xs text-muted-foreground hover:text-red-400 transition-colors"
-                    >
-                      Delete
-                    </button>
-                  </td>
+        <>
+          {/* Desktop table */}
+          <div className="hidden sm:block rounded-xl border border-border overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="border-b border-border bg-muted/30">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Template</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Target</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Schedule</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Next run</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Runs</th>
+                  <th className="px-4 py-3" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {schedules.map((s) => {
+                  const isPaused = !!s.pausedUntil && new Date(s.pausedUntil) > new Date();
+                  const isPending = actionPending === s.scheduleId;
+                  const showPausePicker = pauseState?.scheduleId === s.scheduleId;
+
+                  return (
+                    <tr key={s.scheduleId} className="hover:bg-muted/20 align-top">
+                      <td className="px-4 py-3">
+                        <p className="font-medium text-foreground">{s.templateName}</p>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground text-xs">
+                        {targetLabel(s)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="text-xs text-foreground">{cronToHuman(s.recurrenceRule)}</p>
+                        {s.analysisStartTime && s.analysisEndTime && (
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {s.analysisStartTime}–{s.analysisEndTime}
+                          </p>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {isPaused ? (
+                          <div>
+                            <BadgeVariant variant="amber" className="text-xs">Paused</BadgeVariant>
+                            {s.pauseReason && (
+                              <p className="text-xs text-muted-foreground mt-0.5">{s.pauseReason}</p>
+                            )}
+                            <p className="text-xs text-muted-foreground">
+                              until {new Date(s.pausedUntil!).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                            </p>
+                          </div>
+                        ) : s.enabled ? (
+                          <BadgeVariant variant="emerald" className="text-xs">Active</BadgeVariant>
+                        ) : (
+                          <BadgeVariant variant="slate" className="text-xs">Disabled</BadgeVariant>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground text-xs tabular-nums">
+                        {formatRelative(s.nextRunAt)}
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground text-xs tabular-nums">
+                        {s.runCount}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2 justify-end">
+                          {/* Edit */}
+                          <button
+                            onClick={() => setFormMode(formMode === s.scheduleId ? null : s.scheduleId)}
+                            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors"
+                            title="Edit"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+
+                          {/* Pause/Resume */}
+                          {isPaused ? (
+                            <button
+                              onClick={() => handleResume(s)}
+                              disabled={isPending}
+                              className="p-1.5 rounded-lg text-amber-400 hover:text-amber-300 hover:bg-amber-400/10 transition-colors"
+                              title="Resume"
+                            >
+                              {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PlayCircle className="h-3.5 w-3.5" />}
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() =>
+                                setPauseState(
+                                  showPausePicker ? null : { scheduleId: s.scheduleId, date: "" }
+                                )
+                              }
+                              disabled={isPending}
+                              className={cn(
+                                "p-1.5 rounded-lg transition-colors",
+                                showPausePicker
+                                  ? "text-amber-400 bg-amber-400/10"
+                                  : "text-muted-foreground hover:text-amber-400 hover:bg-amber-400/10"
+                              )}
+                              title="Pause"
+                            >
+                              <PauseCircle className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+
+                          {/* Delete */}
+                          <button
+                            onClick={() => handleDelete(s)}
+                            className="p-1.5 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                            title="Delete"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+
+                        {/* Inline pause date picker */}
+                        {showPausePicker && (
+                          <div className="mt-2 flex items-center gap-2">
+                            <input
+                              type="date"
+                              className="flex-1 rounded-lg border border-border bg-transparent px-2.5 py-1.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                              value={pauseState?.date ?? ""}
+                              onChange={(e) =>
+                                setPauseState((prev) => prev ? { ...prev, date: e.target.value } : null)
+                              }
+                              min={new Date().toISOString().split("T")[0]}
+                            />
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-xs h-7 px-2.5"
+                              disabled={!pauseState?.date || isPending}
+                              onClick={() => handlePause(s)}
+                            >
+                              {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Pause"}
+                            </Button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile card list */}
+          <div className="sm:hidden space-y-3">
+            {schedules.map((s) => {
+              const isPaused = !!s.pausedUntil && new Date(s.pausedUntil) > new Date();
+              const isPending = actionPending === s.scheduleId;
+              const showPausePicker = pauseState?.scheduleId === s.scheduleId;
+
+              return (
+                <div key={s.scheduleId} className="rounded-xl border border-border bg-card/50 p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-medium text-sm text-foreground truncate">{s.templateName}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{targetLabel(s)}</p>
+                    </div>
+                    {isPaused ? (
+                      <BadgeVariant variant="amber" className="text-xs shrink-0">Paused</BadgeVariant>
+                    ) : s.enabled ? (
+                      <BadgeVariant variant="emerald" className="text-xs shrink-0">Active</BadgeVariant>
+                    ) : (
+                      <BadgeVariant variant="slate" className="text-xs shrink-0">Disabled</BadgeVariant>
+                    )}
+                  </div>
+
+                  <div className="text-xs text-muted-foreground space-y-1">
+                    <p>{cronToHuman(s.recurrenceRule)}</p>
+                    {s.analysisStartTime && s.analysisEndTime && (
+                      <p>Window: {s.analysisStartTime}–{s.analysisEndTime}</p>
+                    )}
+                    <p>Next run: {formatRelative(s.nextRunAt)}</p>
+                    {isPaused && s.pauseReason && <p>Reason: {s.pauseReason}</p>}
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-1 border-t border-border">
+                    <button
+                      onClick={() => setFormMode(formMode === s.scheduleId ? null : s.scheduleId)}
+                      className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />Edit
+                    </button>
+
+                    {isPaused ? (
+                      <button
+                        onClick={() => handleResume(s)}
+                        disabled={isPending}
+                        className="flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300 transition-colors ml-auto"
+                      >
+                        {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PlayCircle className="h-3.5 w-3.5" />}
+                        Resume
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() =>
+                          setPauseState(showPausePicker ? null : { scheduleId: s.scheduleId, date: "" })
+                        }
+                        disabled={isPending}
+                        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-amber-400 transition-colors ml-auto"
+                      >
+                        <PauseCircle className="h-3.5 w-3.5" />Pause
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => handleDelete(s)}
+                      className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-red-400 transition-colors"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />Delete
+                    </button>
+                  </div>
+
+                  {showPausePicker && (
+                    <div className="flex items-center gap-2 pt-2">
+                      <input
+                        type="date"
+                        className="flex-1 rounded-lg border border-border bg-transparent px-2.5 py-1.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        value={pauseState?.date ?? ""}
+                        onChange={(e) =>
+                          setPauseState((prev) => prev ? { ...prev, date: e.target.value } : null)
+                        }
+                        min={new Date().toISOString().split("T")[0]}
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs h-7 px-2.5"
+                        disabled={!pauseState?.date || isPending}
+                        onClick={() => handlePause(s)}
+                      >
+                        {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Pause"}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>
       )}
     </div>
   );
