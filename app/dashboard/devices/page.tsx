@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
 import { auth } from "@/lib/firebase";
-import { apiFetch, normalizeDevice, enableMic, whoami } from "@/lib/api";
+import { apiFetch, normalizeDevice, enableMic, disableMic, whoami } from "@/lib/api";
 import type { Device, RawDevice } from "@/types/api";
 import { DeviceCard } from "@/components/dashboard/device-card";
 import { DeviceCardSkeleton } from "@/components/ui/skeleton";
@@ -56,16 +56,21 @@ export default function DevicesPage() {
     return () => unsub?.();
   }, [fetchDevices]);
 
-  // Only handles "enable" from the card; "disable" lives in the device detail page
   const handleToggleDevice = async (device: Device, action: "enable" | "disable") => {
-    if (!activeCompanyId || action === "disable") return;
+    if (action === "disable" && !confirm("Disable this device? Streaming will stop.")) return;
+    if (!activeCompanyId) return;
     setTogglingDeviceId(device.device_id);
     try {
-      await enableMic(activeCompanyId, device.device_id);
+      if (action === "enable") {
+        await enableMic(activeCompanyId, device.device_id);
+      } else {
+        await disableMic(activeCompanyId, device.device_id);
+      }
       fetchDevices();
-      toast.success("Device enabled");
+      toast.success(action === "enable" ? "Device enabled" : "Device disabled");
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Failed to enable device");
+      const msg = err instanceof Error ? err.message : `Failed to ${action} device`;
+      toast.error(msg);
     } finally {
       setTogglingDeviceId(null);
     }
