@@ -68,7 +68,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const isBlocked = planState === "expired" && !allowedWhenBlocked.some((p) => pathname.startsWith(p));
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-slate-950">
+    <div className="flex h-screen flex-col overflow-hidden bg-background">
       {process.env.NEXT_PUBLIC_DEMO_MODE === "true" && <DemoBanner />}
       <div className="flex flex-1 overflow-hidden">
         <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)} />

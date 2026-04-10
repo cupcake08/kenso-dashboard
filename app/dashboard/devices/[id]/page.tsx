@@ -144,7 +144,7 @@ export default function DeviceDetailPage() {
 
   if (error || !device) {
     return (
-      <div className="rounded-xl border border-red-900 bg-red-950/30 p-6 text-red-400">
+      <div role="alert" className="rounded-xl border border-red-900 bg-red-950/30 p-6 text-red-400">
         {error ?? "Device not found"}
       </div>
     );
@@ -175,12 +175,15 @@ export default function DeviceDetailPage() {
       </div>
 
       {/* Tabs */}
-      <div className="mb-6 flex gap-1 rounded-lg bg-muted p-1 border border-border w-fit">
+      <div role="tablist" aria-label="Device sections" className="mb-6 flex gap-1 rounded-lg bg-muted p-1 border border-border w-fit">
         {([["listen", "Listen Live"], ["recordings", "Recordings"], ["recent", "Recent"], ["report", "Report"]] as const).map(([t, label]) => (
           <button
             key={t}
+            role="tab"
+            aria-selected={tab === t}
+            aria-controls={`panel-${t}`}
             onClick={() => setTab(t)}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+            className={`px-4 py-2.5 rounded-md text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
               tab === t ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
             }`}
           >
@@ -191,7 +194,7 @@ export default function DeviceDetailPage() {
 
       <AnimatePresence mode="wait">
         {tab === "listen" && (
-          <motion.div key="listen" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
+          <motion.div key="listen" role="tabpanel" id="panel-listen" aria-labelledby="listen" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
             <div className="rounded-xl border border-border bg-card/50 overflow-hidden">
               {/* Waveform */}
               <div className="h-28 sm:h-32">
@@ -294,13 +297,13 @@ export default function DeviceDetailPage() {
         )}
 
         {tab === "recordings" && (
-          <motion.div key="recordings" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
+          <motion.div key="recordings" role="tabpanel" id="panel-recordings" aria-labelledby="recordings" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
             <RecordingsPlayer deviceId={deviceId} />
           </motion.div>
         )}
 
         {tab === "recent" && (
-          <motion.div key="recent" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
+          <motion.div key="recent" role="tabpanel" id="panel-recent" aria-labelledby="recent" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
             {windows.length === 0 ? (
               <div className="flex h-40 flex-col items-center justify-center gap-2 text-muted-foreground">
                 <Clock className="h-6 w-6" />
@@ -344,7 +347,7 @@ export default function DeviceDetailPage() {
         )}
 
         {tab === "report" && (
-          <motion.div key="report" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
+          <motion.div key="report" role="tabpanel" id="panel-report" aria-labelledby="report" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
             {selectedWindow ? (
               <div className="space-y-4">
                 {/* Window header */}

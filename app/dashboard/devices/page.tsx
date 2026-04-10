@@ -27,7 +27,7 @@ export default function DevicesPage() {
 
   const fetchDevices = useCallback(() => {
     apiFetch<RawDevice[]>("/devices")
-      .then((raw) => setDevices(raw.map(normalizeDevice)))
+      .then((raw) => { setDevices(raw.map(normalizeDevice)); setError(""); })
       .catch((e: Error) => setError(e.message));
   }, []);
 
@@ -54,6 +54,13 @@ export default function DevicesPage() {
       });
     });
     return () => unsub?.();
+  }, [fetchDevices]);
+
+  // Poll for device status updates every 30s
+  useEffect(() => {
+    if (process.env.NEXT_PUBLIC_DEMO_MODE === "true") return;
+    const interval = setInterval(fetchDevices, 30000);
+    return () => clearInterval(interval);
   }, [fetchDevices]);
 
   const handleToggleDevice = async (device: Device, action: "enable" | "disable") => {
@@ -98,7 +105,7 @@ export default function DevicesPage() {
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-foreground">Devices</h1>
         </div>
-        <div className="rounded-lg border border-red-400/20 bg-red-400/5 px-4 py-3 flex items-center justify-between">
+        <div role="alert" className="rounded-lg border border-red-400/20 bg-red-400/5 px-4 py-3 flex items-center justify-between">
           <p className="text-sm text-red-400">Unable to load devices. Check your connection and try again.</p>
           <button onClick={() => { setError(""); fetchDevices(); }} className="text-xs text-red-400 hover:text-red-300 underline underline-offset-2 ml-4 shrink-0">Retry</button>
         </div>
@@ -120,7 +127,7 @@ export default function DevicesPage() {
             </div>
             <h2 className="text-xl font-bold text-foreground">No devices yet</h2>
             <p className="text-sm text-muted-foreground leading-relaxed max-w-xs">
-              Provision your first device to start monitoring audio in your stores.
+              Provision your first device to start monitoring audio at your locations.
               Devices appear here automatically after they register.
             </p>
           </div>
@@ -140,7 +147,7 @@ export default function DevicesPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {devices.map((device) => (
           <DeviceCard
             key={device.device_id}

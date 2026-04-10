@@ -32,6 +32,10 @@
     --ring: 160 84% 39%;
     --sidebar-width: 14rem;
     --sidebar-collapsed: 4rem;
+    --status-online: 160 84% 39%;
+    --status-offline: 0 62% 50%;
+    --status-streaming: 217 91% 60%;
+    --status-pending: 45 93% 47%;
   }
 
   * {
@@ -99,3 +103,10 @@
     transform: scale(1);
   }
 }
+
+/* Waveform drift for login brand side */
+@keyframes waveform-drift {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
