@@ -11,7 +11,11 @@ interface DeviceCardProps {
 }
 
 function timeAgo(isoString: string): string {
-  const diff = Date.now() - new Date(isoString).getTime();
+  if (!isoString) return "—";
+  const date = new Date(isoString);
+  if (isNaN(date.getTime())) return "—";
+  const diff = Date.now() - date.getTime();
+  if (diff < 0) return "just now";
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return "just now";
   if (mins < 60) return `${mins}m ago`;
@@ -20,88 +24,116 @@ function timeAgo(isoString: string): string {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
-function StatusDot({ status }: { status: Device["status"] }) {
-  const colors: Record<Device["status"], string> = {
-    online: "bg-emerald-500",
-    streaming: "bg-blue-500",
-    offline: "bg-red-400",
-    pending: "bg-amber-400",
-  };
+type StatusKey = Device["status"];
+
+const STATUS: Record<StatusKey, { dot: string; badge: string; label: string }> = {
+  online:    { dot: "bg-emerald-500",    badge: "bg-emerald-500/10 text-emerald-400 ring-emerald-500/20",  label: "Online"  },
+  streaming: { dot: "bg-blue-500",       badge: "bg-blue-500/10 text-blue-400 ring-blue-500/20",            label: "Live"    },
+  offline:   { dot: "bg-slate-500",      badge: "bg-slate-500/10 text-slate-400 ring-slate-500/20",         label: "Offline" },
+  pending:   { dot: "bg-amber-400",      badge: "bg-amber-400/10 text-amber-400 ring-amber-400/20",         label: "Setup"   },
+};
+
+function StatusDot({ status }: { status: StatusKey }) {
+  const { dot } = STATUS[status];
   return (
-    <span className="relative flex h-2 w-2 shrink-0 mt-px" aria-label={status}>
+    <span className="relative flex h-2 w-2 shrink-0 mt-[3px]" aria-hidden>
       {status === "streaming" && (
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-60" />
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-50" />
       )}
-      <span className={cn("relative inline-flex h-2 w-2 rounded-full", colors[status])} />
+      <span className={cn("relative inline-flex h-2 w-2 rounded-full", dot)} />
     </span>
   );
 }
 
 export function DeviceCard({ device, onToggle, toggling }: DeviceCardProps) {
+  const { badge, label } = STATUS[device.status];
   const isPending = device.status === "pending";
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8 }}
+      initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2, ease: [0.33, 1, 0.68, 1] }}
-      className="group rounded-xl border border-border bg-card p-4 transition-colors hover:border-muted-foreground/25"
+      transition={{ duration: 0.25, ease: [0.33, 1, 0.68, 1] }}
+      className={cn(
+        "group relative rounded-2xl border border-border/60 p-4",
+        "bg-gradient-to-b from-[hsl(217_33%_11%)] to-[hsl(217_33%_7%)]",
+        "shadow-[inset_0_1px_0_0_hsl(215_14%_20%)]",
+        "transition-all duration-200",
+        "hover:border-muted-foreground/20 hover:shadow-[inset_0_1px_0_0_hsl(215_14%_24%),0_0_0_1px_hsl(215_14%_20%)]",
+      )}
     >
-      {/* Label + status */}
-      <div className="flex items-center gap-2">
-        <StatusDot status={device.status} />
-        <h3 className="flex-1 truncate font-medium text-foreground text-sm">
-          {device.label || "Unnamed Device"}
-        </h3>
+      {/* Header — name + status pill */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <StatusDot status={device.status} />
+          <h3 className="truncate text-sm font-semibold tracking-tight text-foreground">
+            {device.label || "Unnamed Device"}
+          </h3>
+        </div>
         <span className={cn(
-          "text-xs shrink-0",
-          device.status === "online" && "text-emerald-600",
-          device.status === "streaming" && "text-blue-500",
-          device.status === "offline" && "text-muted-foreground/50",
-          device.status === "pending" && "text-amber-500",
+          "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest ring-1",
+          badge,
         )}>
-          {device.status}
+          {label}
         </span>
       </div>
 
-      {/* Location + last seen */}
-      <div className="mt-2">
+      {/* Location + last seen — indented to align under label */}
+      <div className="mt-2 pl-4 space-y-0.5">
         {device.location && (
-          <p className="text-sm text-muted-foreground truncate">{device.location}</p>
+          <p className="text-xs text-muted-foreground truncate">{device.location}</p>
         )}
-        <p className="text-xs text-muted-foreground/50 mt-0.5">
-          {device.last_seen_at ? timeAgo(device.last_seen_at) : "—"}
+        <p className="text-[11px] tabular-nums text-muted-foreground/40">
+          {timeAgo(device.last_seen_at)}
         </p>
       </div>
 
       {/* Actions */}
-      {!isPending && (
-        <div className="mt-4 flex items-center gap-4">
+      {!isPending ? (
+        <div className="mt-4 flex gap-2">
+          {/* Primary — Listen */}
           <TransitionLink
             href={`/dashboard/devices/${device.device_id}`}
             transitionName={`device-${device.device_id}`}
-            className="flex-1 rounded-lg bg-primary py-1.5 text-center text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+            className={cn(
+              "flex-1 rounded-xl py-2 text-center text-sm font-semibold text-primary-foreground",
+              "bg-primary transition-all duration-150",
+              "hover:brightness-110 hover:shadow-[0_0_16px_-4px_hsl(160_84%_39%/0.6)]",
+              "active:scale-[0.97] active:shadow-none",
+            )}
           >
             Listen
           </TransitionLink>
+          {/* Secondary — Reports */}
           <TransitionLink
             href={`/dashboard/devices/${device.device_id}?tab=report`}
             transitionName={`device-${device.device_id}`}
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            className={cn(
+              "flex-1 rounded-xl border border-border/80 py-2 text-center text-sm font-medium text-muted-foreground",
+              "transition-all duration-150",
+              "hover:border-muted-foreground/30 hover:text-foreground hover:bg-muted/40",
+              "active:scale-[0.97]",
+            )}
           >
-            Reports →
+            Reports
           </TransitionLink>
         </div>
-      )}
-
-      {isPending && onToggle && (
-        <button
-          onClick={() => onToggle(device, "enable")}
-          disabled={toggling}
-          className="mt-4 w-full rounded-lg bg-primary py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
-          {toggling ? "Enabling…" : "Enable Device"}
-        </button>
+      ) : (
+        onToggle && (
+          <button
+            onClick={() => onToggle(device, "enable")}
+            disabled={toggling}
+            className={cn(
+              "mt-4 w-full rounded-xl bg-primary py-2 text-sm font-semibold text-primary-foreground",
+              "transition-all duration-150",
+              "hover:brightness-110 hover:shadow-[0_0_16px_-4px_hsl(160_84%_39%/0.5)]",
+              "active:scale-[0.97] active:shadow-none",
+              "disabled:opacity-40 disabled:cursor-not-allowed",
+            )}
+          >
+            {toggling ? "Enabling…" : "Enable Device"}
+          </button>
+        )
       )}
     </motion.div>
   );
