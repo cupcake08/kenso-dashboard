@@ -84,15 +84,20 @@ export interface RawAnalysisSchedule {
   template_id: string;
   template_name: string;
   mic_ids: string[];
+  shop_ids?: string[];
   schedule_type: "recurring" | "one_time";
   recurrence_rule: string;
   analysis_window_hours: number;
+  analysis_start_time?: string;
+  analysis_end_time?: string;
   timezone: string;
   free_text_notes?: string;
   enabled: boolean;
   next_run_at: string; // ISO string
   last_run_at?: string;
   last_job_id?: string;
+  paused_until?: string;
+  pause_reason?: string;
   run_count: number;
   created_at: string;
 }
@@ -174,14 +179,19 @@ export interface AnalysisSchedule {
   templateId: string;
   templateName: string;
   micIds: string[];
+  shopIds?: string[];
   scheduleType: "recurring" | "one_time";
   recurrenceRule: string;
   analysisWindowHours: number;
+  analysisStartTime?: string;
+  analysisEndTime?: string;
   timezone: string;
   freeTextNotes?: string;
   enabled: boolean;
   nextRunAt: string; // ISO
   lastRunAt?: string;
+  pausedUntil?: string;
+  pauseReason?: string;
   runCount: number;
   createdAt: string;
 }
@@ -191,4 +201,30 @@ export interface EstimateResult {
   estimatedDurationMin: number;
   totalAudioDurationMs: number;
   hasAudio: boolean;
+}
+
+// --- Operating Hours ---
+
+export interface DaySchedule {
+  day: string;
+  open: string;
+  close: string;
+  closed: boolean;
+}
+
+export interface DeviceOverride {
+  label: string;
+  weekly_hours: DaySchedule[];
+}
+
+export interface OperatingSchedule {
+  company_id: string;
+  shop_id: string;
+  timezone: string;
+  weekly_hours: DaySchedule[];
+  device_overrides: Record<string, DeviceOverride>;
+  paused_until?: string;
+  pause_reason?: string;
+  created_at: string;
+  updated_at: string;
 }

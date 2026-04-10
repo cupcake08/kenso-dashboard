@@ -6,6 +6,7 @@ import type {
 import type {
   RawAnalysisTemplate, RawAnalysisJob, RawEstimateResponse, RawAnalysisSchedule,
   AnalysisTemplate, AnalysisJob, EstimateResult, AnalysisSchedule,
+  OperatingSchedule, DaySchedule, DeviceOverride,
 } from "@/types/analysis";
 
 const API_BASE =
@@ -255,14 +256,19 @@ export function normalizeSchedule(raw: RawAnalysisSchedule): AnalysisSchedule {
     templateId: raw.template_id,
     templateName: raw.template_name,
     micIds: raw.mic_ids,
+    shopIds: raw.shop_ids,
     scheduleType: raw.schedule_type,
     recurrenceRule: raw.recurrence_rule,
     analysisWindowHours: raw.analysis_window_hours,
+    analysisStartTime: raw.analysis_start_time,
+    analysisEndTime: raw.analysis_end_time,
     timezone: raw.timezone,
     freeTextNotes: raw.free_text_notes,
     enabled: raw.enabled,
     nextRunAt: raw.next_run_at,
     lastRunAt: raw.last_run_at,
+    pausedUntil: raw.paused_until,
+    pauseReason: raw.pause_reason,
     runCount: raw.run_count,
     createdAt: raw.created_at,
   };
@@ -350,4 +356,74 @@ export async function disableMic(companyId: string, micId: string): Promise<unkn
     method: "PATCH",
     headers: { "X-Company-ID": companyId },
   });
+}
+
+// --- Operating Hours ---
+
+export async function listOperatingHours(): Promise<OperatingSchedule[]> {
+  return apiFetch<OperatingSchedule[]>("/operating-hours");
+}
+
+export async function getOperatingHours(shopId: string): Promise<OperatingSchedule> {
+  return apiFetch<OperatingSchedule>(`/operating-hours/${shopId}`);
+}
+
+export async function upsertOperatingHours(shopId: string, body: {
+  timezone: string;
+  weekly_hours: DaySchedule[];
+  device_overrides?: Record<string, DeviceOverride>;
+}): Promise<OperatingSchedule> {
+  return apiFetch<OperatingSchedule>(`/operating-hours/${shopId}`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteOperatingHours(shopId: string): Promise<void> {
+  await apiFetch(`/operating-hours/${shopId}`, { method: "DELETE" });
+}
+
+export async function pauseOperatingHours(shopId: string, pausedUntil: string, reason?: string): Promise<OperatingSchedule> {
+  return apiFetch<OperatingSchedule>(`/operating-hours/${shopId}/pause`, {
+    method: "PATCH",
+    body: JSON.stringify({ paused_until: pausedUntil, reason }),
+  });
+}
+
+export async function resumeOperatingHours(shopId: string): Promise<OperatingSchedule> {
+  return apiFetch<OperatingSchedule>(`/operating-hours/${shopId}/resume`, {
+    method: "PATCH",
+  });
+}
+
+// --- Schedule Management ---
+
+export async function createSchedule(body: {
+  template_id: string;
+  mic_ids?: string[];
+  shop_ids?: string[];
+  schedule_type: string;
+  recurrence_rule: string;
+  analysis_window_hours?: number;
+  analysis_start_time?: string;
+  analysis_end_time?: string;
+  timezone: string;
+  free_text_notes?: string;
+  next_run_unix: number;
+}): Promise<{ schedule_id: string }> {
+  return apiFetch("/analysis/schedules", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function pauseSchedule(scheduleId: string, pausedUntil: string, reason?: string): Promise<void> {
+  await apiFetch(`/analysis/schedules/${scheduleId}/pause`, {
+    method: "PATCH",
+    body: JSON.stringify({ paused_until: pausedUntil, reason }),
+  });
+}
+
+export async function resumeSchedule(scheduleId: string): Promise<void> {
+  await apiFetch(`/analysis/schedules/${scheduleId}/resume`, { method: "PATCH" });
 }
