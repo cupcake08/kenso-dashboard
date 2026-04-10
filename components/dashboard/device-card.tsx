@@ -90,34 +90,18 @@ export function DeviceCard({ device, onToggle, toggling }: DeviceCardProps) {
 
       {/* Actions */}
       {!isPending ? (
-        <div className="mt-4 flex gap-2">
-          {/* Primary — Listen */}
-          <TransitionLink
-            href={`/dashboard/devices/${device.device_id}`}
-            transitionName={`device-${device.device_id}`}
-            className={cn(
-              "flex-1 rounded-xl py-2 text-center text-sm font-semibold text-primary-foreground",
-              "bg-primary transition-all duration-150",
-              "hover:brightness-110 hover:shadow-[0_0_16px_-4px_hsl(160_84%_39%/0.6)]",
-              "active:scale-[0.97] active:shadow-none",
-            )}
-          >
-            Listen
-          </TransitionLink>
-          {/* Secondary — Reports */}
-          <TransitionLink
-            href={`/dashboard/devices/${device.device_id}?tab=report`}
-            transitionName={`device-${device.device_id}`}
-            className={cn(
-              "flex-1 rounded-xl border border-border/80 py-2 text-center text-sm font-medium text-muted-foreground",
-              "transition-all duration-150",
-              "hover:border-muted-foreground/30 hover:text-foreground hover:bg-muted/40",
-              "active:scale-[0.97]",
-            )}
-          >
-            Reports
-          </TransitionLink>
-        </div>
+        <TransitionLink
+          href={`/dashboard/devices/${device.device_id}`}
+          transitionName={`device-${device.device_id}`}
+          className={cn(
+            "mt-4 block w-full rounded-xl py-2 text-center text-sm font-semibold text-primary-foreground",
+            "bg-primary transition-all duration-150",
+            "hover:brightness-110 hover:shadow-[0_0_16px_-4px_hsl(160_84%_39%/0.6)]",
+            "active:scale-[0.97] active:shadow-none",
+          )}
+        >
+          Listen
+        </TransitionLink>
       ) : (
         onToggle && (
           <button
