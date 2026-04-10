@@ -1,33 +1,40 @@
 "use client";
 import { useEffect, useState } from "react";
+import { motion } from "framer-motion";
+import { useRouter } from "next/navigation";
 import { auth } from "@/lib/firebase";
-import { apiFetch, normalizeDevice } from "@/lib/api";
+import { apiFetch, normalizeDevice, generateAPIKey, rotateAPIKey } from "@/lib/api";
 import type { Device, PlanResponse, RawDevice, RawPlanResponse } from "@/types/api";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
-import { BadgeVariant } from "@/components/ui/badge-variant";
-import { SettingsSkeleton } from "@/components/ui/skeleton";
+import { Loader2, Copy, RefreshCw, Key, User, CreditCard, Cpu, Check, AlertCircle, LogOut } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from "sonner";
+import type { User as FirebaseUser } from "firebase/auth";
 
 const DEMO_PLAN: PlanResponse = { plan: "Enterprise", billing_cycle: "prepaid", price_per_month: 29900 };
 const DEMO_DEVICES_SETTINGS: Device[] = [
-  { device_id: "dev_001_koramangala", shop_id: "shop_001", label: "Store - Koramangala", location: "Koramangala, Bangalore", status: "streaming", last_seen_at: new Date().toISOString() },
-  { device_id: "dev_002_indiranagar", shop_id: "shop_002", label: "Store - Indiranagar", location: "Indiranagar, Bangalore", status: "online", last_seen_at: new Date(Date.now() - 300000).toISOString() },
-  { device_id: "dev_003_whitefield", shop_id: "shop_003", label: "Store - Whitefield", location: "Whitefield, Bangalore", status: "offline", last_seen_at: new Date(Date.now() - 7200000).toISOString() },
-  { device_id: "dev_004_hsr", shop_id: "shop_004", label: "Store - HSR Layout", location: "HSR Layout, Bangalore", status: "online", last_seen_at: new Date(Date.now() - 60000).toISOString() },
+  { device_id: "dev_001", shop_id: "shop_001", label: "Store - Koramangala", location: "Bangalore", status: "streaming", last_seen_at: new Date().toISOString() },
 ];
 
+const fadeUp = {
+  initial: { opacity: 0, y: 10 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.3, ease: [0.33, 1, 0.68, 1] as const },
+};
+
 export default function SettingsPage() {
-  const user = auth?.currentUser ?? null;
+  const router = useRouter();
+  const [user, setUser] = useState<FirebaseUser | null>(null);
   const [plan, setPlan] = useState<PlanResponse | null>(null);
   const [devices, setDevices] = useState<Device[]>([]);
   const [labels, setLabels] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<string | null>(null);
+  const [apiKey, setApiKey] = useState<string | null>(null);
+  const [apiKeyCopied, setApiKeyCopied] = useState(false);
+  const [apiKeyLoading, setApiKeyLoading] = useState(false);
   const [savedOk, setSavedOk] = useState<string | null>(null);
-  const [savingError, setSavingError] = useState("");
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
 
   useEffect(() => {
     if (process.env.NEXT_PUBLIC_DEMO_MODE === "true") {
@@ -39,148 +46,253 @@ export default function SettingsPage() {
       setLoading(false);
       return;
     }
-    if (!auth?.currentUser) {
-      setLoading(false);
-      return;
-    }
-    Promise.all([
-      apiFetch<RawPlanResponse>("/billing/plan"),
-      apiFetch<RawDevice[]>("/devices").then((raw) => {
-        const devices = raw.map(normalizeDevice);
-        setDevices(devices);
-        const init: Record<string, string> = {};
-        devices.forEach((d) => { init[d.device_id] = d.label; });
-        setLabels(init);
-        return devices;
-      }),
-    ])
-      .then(([p]) => setPlan(p))
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false));
+    let unsub: (() => void) | undefined;
+    import("firebase/auth").then(({ onAuthStateChanged }) => {
+      if (!auth) { setLoading(false); return; }
+      unsub = onAuthStateChanged(auth, (u) => {
+        setUser(u);
+        if (!u) { setLoading(false); return; }
+        Promise.all([
+          apiFetch<RawPlanResponse>("/billing/plan").catch(() => null),
+          apiFetch<RawDevice[]>("/devices").then((raw) => {
+            const devs = (raw ?? []).map(normalizeDevice);
+            setDevices(devs);
+            const init: Record<string, string> = {};
+            devs.forEach((d) => { init[d.device_id] = d.label; });
+            setLabels(init);
+            return devs;
+          }).catch(() => []),
+        ])
+          .then(([p]) => { if (p) setPlan(p as PlanResponse); })
+          .finally(() => setLoading(false));
+      });
+    });
+    return () => unsub?.();
   }, []);
 
   async function saveLabel(deviceId: string) {
     const originalLabel = devices.find((d) => d.device_id === deviceId)?.label ?? "";
     const newLabel = labels[deviceId];
     if (newLabel === originalLabel) return;
-
     setSaving(deviceId);
-    setSavingError("");
     setSavedOk(null);
-
-    // Optimistic: update device list immediately
-    setDevices((prev) =>
-      prev.map((d) => d.device_id === deviceId ? { ...d, label: newLabel } : d)
-    );
-
+    setDevices((prev) => prev.map((d) => d.device_id === deviceId ? { ...d, label: newLabel } : d));
     try {
-      await apiFetch(`/devices/${deviceId}`, {
-        method: "PATCH",
-        body: JSON.stringify({ label: newLabel }),
-      });
+      await apiFetch(`/devices/${deviceId}`, { method: "PATCH", body: JSON.stringify({ label: newLabel }) });
       setSavedOk(deviceId);
+      toast.success("Device label updated");
       setTimeout(() => setSavedOk(null), 2000);
     } catch (e) {
-      // Revert on failure
       setLabels((prev) => ({ ...prev, [deviceId]: originalLabel }));
-      setDevices((prev) =>
-        prev.map((d) => d.device_id === deviceId ? { ...d, label: originalLabel } : d)
-      );
-      setSavingError(e instanceof Error ? e.message : "Failed to save");
+      setDevices((prev) => prev.map((d) => d.device_id === deviceId ? { ...d, label: originalLabel } : d));
+      toast.error(e instanceof Error ? e.message : "Failed to save");
     } finally {
       setSaving(null);
     }
   }
 
   if (loading) {
-    return <SettingsSkeleton />;
+    return (
+      <div className="max-w-2xl space-y-6">
+        <Skeleton className="h-8 w-28" />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Skeleton className="h-28 rounded-xl" />
+          <Skeleton className="h-28 rounded-xl" />
+        </div>
+        <Skeleton className="h-24 rounded-xl" />
+        <Skeleton className="h-36 rounded-xl" />
+      </div>
+    );
   }
 
+  const planName = plan?.plan ?? "Free";
+  const priceLabel = plan?.price_per_month
+    ? `\u20B9${(plan.price_per_month / 100).toLocaleString()}/mo`
+    : "Free";
+  const billingLabel = plan?.billing_cycle === "postpaid" ? "Postpaid" : "Prepaid";
+
   return (
-    <div className="space-y-6">
+    <div className="max-w-2xl space-y-6">
+      {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Settings</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Manage your profile, plan, and devices</p>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">Settings</h1>
+        <p className="mt-1.5 text-sm text-muted-foreground leading-normal">Account, billing, and device configuration</p>
       </div>
 
-      {/* Profile */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Profile</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      {/* Profile + Plan */}
+      <div className="grid gap-4 sm:grid-cols-5">
+        {/* Profile — takes 3 cols */}
+        <motion.div {...fadeUp} className="sm:col-span-3 rounded-xl border border-border bg-card/50 p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <User className="h-3.5 w-3.5 text-muted-foreground" />
+            <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">Profile</p>
+          </div>
           <div className="flex items-center gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-lg font-bold text-primary-foreground">
-              {user?.email?.[0]?.toUpperCase() ?? "U"}
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/15 text-primary text-lg font-bold shrink-0">
+              {user?.displayName?.[0]?.toUpperCase() ?? user?.email?.[0]?.toUpperCase() ?? "U"}
             </div>
-            <div>
-              <p className="font-medium text-foreground">{user?.displayName ?? "—"}</p>
-              <p className="text-sm text-muted-foreground">{user?.email}</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Plan */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Plan</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-lg font-semibold text-foreground capitalize">{plan?.plan ?? "—"}</p>
-              <p className="text-sm text-muted-foreground">
-                {plan?.billing_cycle === "prepaid" ? "Prepaid billing" : "Postpaid"} · ₹{(plan?.price_per_month ?? 0) / 100}/month
+            <div className="min-w-0">
+              <p className="text-lg font-semibold text-foreground truncate leading-tight">
+                {user?.displayName ?? "User"}
               </p>
+              <p className="text-sm text-muted-foreground truncate">{user?.email}</p>
             </div>
-            <BadgeVariant variant="emerald" className="capitalize">
-              {plan?.billing_cycle ?? "—"}
-            </BadgeVariant>
           </div>
-        </CardContent>
-      </Card>
+        </motion.div>
 
-      {/* Devices */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Device Labels</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {devices.map((device) => (
-            <div key={device.device_id} className="flex items-center gap-3">
-              <Input
-                value={labels[device.device_id] ?? ""}
-                onChange={(e) => {
-                  setLabels((prev) => ({ ...prev, [device.device_id]: e.target.value }));
-                  setSavedOk(null);
-                  setSavingError("");
-                }}
-                placeholder="Device label"
-                className="flex-1"
-              />
+        {/* Plan — takes 2 cols */}
+        <motion.div {...fadeUp} transition={{ ...fadeUp.transition, delay: 0.05 }} className="sm:col-span-2 rounded-xl border border-border bg-card/50 p-5 flex flex-col">
+          <div className="flex items-center gap-2 mb-4">
+            <CreditCard className="h-3.5 w-3.5 text-muted-foreground" />
+            <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">Plan</p>
+          </div>
+          <p className="text-xl font-bold text-foreground tracking-tight capitalize leading-snug">{planName}</p>
+          <p className="text-sm text-muted-foreground mt-1.5 leading-none">{billingLabel} · {priceLabel}</p>
+        </motion.div>
+      </div>
+
+      {/* Device Labels */}
+      {devices.length > 0 && (
+        <motion.div {...fadeUp} transition={{ ...fadeUp.transition, delay: 0.1 }} className="rounded-xl border border-border bg-card/50 p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <Cpu className="h-3.5 w-3.5 text-muted-foreground" />
+            <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">Devices</p>
+            <span className="text-xs text-muted-foreground/60 ml-auto tabular-nums">{devices.length} connected</span>
+          </div>
+          <div className="space-y-2.5">
+            {devices.map((device) => (
+              <div key={device.device_id} className="flex items-center gap-2.5">
+                <div className="flex-1 min-w-0">
+                  <Input
+                    value={labels[device.device_id] ?? ""}
+                    onChange={(e) => {
+                      setLabels((prev) => ({ ...prev, [device.device_id]: e.target.value }));
+                      setSavedOk(null);
+                    }}
+                    onKeyDown={(e) => e.key === "Enter" && saveLabel(device.device_id)}
+                    placeholder="Device label"
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  variant={savedOk === device.device_id ? "default" : "outline"}
+                  onClick={() => saveLabel(device.device_id)}
+                  disabled={saving === device.device_id || labels[device.device_id] === device.label}
+                  className="min-w-[4.5rem] transition-all"
+                >
+                  {saving === device.device_id ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : savedOk === device.device_id ? (
+                    <><Check className="h-3.5 w-3.5 mr-1" />Saved</>
+                  ) : "Save"}
+                </Button>
+              </div>
+            ))}
+          </div>
+        </motion.div>
+      )}
+
+      {/* API Key */}
+      <motion.div {...fadeUp} transition={{ ...fadeUp.transition, delay: 0.15 }} className="rounded-xl border border-border bg-card/50 p-5">
+        <div className="flex items-center gap-2 mb-1.5">
+          <Key className="h-3.5 w-3.5 text-muted-foreground" />
+          <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">API Key</p>
+        </div>
+        <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
+          Call the Analysis API programmatically with the{" "}
+          <code className="bg-muted px-1.5 py-0.5 rounded text-[0.6875rem] font-mono text-foreground/80">X-API-Key</code>{" "}
+          header.
+        </p>
+
+        {apiKey ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <code className="flex-1 rounded-lg border border-border bg-muted/50 px-3 py-2.5 text-[0.8125rem] font-mono text-foreground overflow-x-auto select-all leading-relaxed">
+                {apiKey}
+              </code>
               <Button
                 size="sm"
-                variant={savedOk === device.device_id ? "default" : "outline"}
-                onClick={() => saveLabel(device.device_id)}
-                disabled={saving === device.device_id}
-                className="min-w-[60px]"
+                variant="outline"
+                onClick={() => {
+                  navigator.clipboard.writeText(apiKey);
+                  setApiKeyCopied(true);
+                  toast.success("API key copied");
+                  setTimeout(() => setApiKeyCopied(false), 2000);
+                }}
+                className="shrink-0"
               >
-                {saving === device.device_id ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : savedOk === device.device_id ? (
-                  "Saved"
-                ) : (
-                  "Save"
-                )}
+                {apiKeyCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
               </Button>
             </div>
-          ))}
-          {savingError && (
-            <p className="text-sm text-red-400">{savingError}</p>
-          )}
-        </CardContent>
-      </Card>
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-3 w-3 text-amber-400 shrink-0" />
+              <p className="text-xs text-muted-foreground/60">Store this key securely. You won't be able to view it again.</p>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={async () => {
+                  if (!confirm("Rotate API key? The current key will stop working immediately.")) return;
+                  setApiKeyLoading(true);
+                  try {
+                    const key = await rotateAPIKey();
+                    setApiKey(key);
+                    toast.success("API key rotated");
+                  } catch {
+                    toast.error("Failed to rotate key");
+                  } finally {
+                    setApiKeyLoading(false);
+                  }
+                }}
+                disabled={apiKeyLoading}
+                className="ml-auto shrink-0 text-xs text-muted-foreground hover:text-foreground"
+              >
+                <RefreshCw className={`h-3 w-3 mr-1.5 ${apiKeyLoading ? "animate-spin" : ""}`} />
+                Rotate
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <Button
+            variant="outline"
+            onClick={async () => {
+              setApiKeyLoading(true);
+              try {
+                const key = await generateAPIKey();
+                setApiKey(key);
+                toast.success("API key generated");
+              } catch {
+                toast.error("Failed to generate key");
+              } finally {
+                setApiKeyLoading(false);
+              }
+            }}
+            disabled={apiKeyLoading}
+          >
+            {apiKeyLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Key className="h-4 w-4 mr-2" />}
+            Generate API Key
+          </Button>
+        )}
+      </motion.div>
+
+      {/* Sign Out */}
+      <motion.div {...fadeUp} transition={{ ...fadeUp.transition, delay: 0.2 }}>
+        <button
+          onClick={async () => {
+            if (!auth) return;
+            const { signOut } = await import("firebase/auth");
+            await signOut(auth);
+            document.cookie = "firebase-token=; path=/; max-age=0";
+            router.push("/login");
+          }}
+          className="flex w-full items-center gap-3 rounded-xl border border-border bg-card/50 p-5 text-left text-muted-foreground hover:text-red-400 hover:border-red-400/20 hover:bg-red-400/5 transition-colors group"
+        >
+          <LogOut className="h-4 w-4 group-hover:text-red-400 transition-colors" />
+          <div>
+            <p className="text-sm font-medium text-foreground group-hover:text-red-400 transition-colors">Sign out</p>
+            <p className="text-xs text-muted-foreground mt-0.5">End your session on this device</p>
+          </div>
+        </button>
+      </motion.div>
     </div>
   );
 }

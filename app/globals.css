@@ -19,10 +19,10 @@
     --accent: 160 84% 39%;
     --muted: 217 33% 17%;
     --muted-foreground: 215 20% 55%;
-    --card: 217 33% 11%;
+    --card: 217 33% 9%;
     --card-foreground: 210 40% 98%;
-    --border: 215 14% 21%;
-    --input: 215 14% 21%;
+    --border: 215 14% 16%;
+    --input: 215 14% 16%;
     --primary: 160 84% 39%;
     --primary-foreground: 222 47% 4%;
     --secondary: 217 33% 17%;
@@ -41,6 +41,28 @@
   body {
     @apply bg-background text-foreground antialiased;
   }
+}
+
+/* Subtle dot pattern for depth */
+.bg-dot-pattern {
+  background-image: radial-gradient(circle, hsl(215 14% 20%) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* Emerald glow for accent elements */
+.glow-primary {
+  box-shadow: 0 0 20px -4px hsl(160 84% 39% / 0.25);
+}
+
+/* Animated gradient for brand accents */
+@keyframes gradient-shift {
+  0%, 100% { background-position: 0% 0%; }
+  50% { background-position: 100% 100%; }
+}
+
+.animate-gradient {
+  background-size: 200% 200%;
+  animation: gradient-shift 8s ease infinite;
 }
 
 /* View Transitions */

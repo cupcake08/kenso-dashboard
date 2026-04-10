@@ -11,6 +11,7 @@ interface ListenClientOpts {
   shopId: string;
   onStateChange: (state: ListenState) => void;
   onAudioLevel: (level: number) => void;
+  onFrequencyData?: (data: Uint8Array) => void;
   onTrack: (stream: MediaStream) => void;
 }
 
@@ -18,10 +19,12 @@ export class ListenClient {
   private ws: WebSocket | null = null;
   private pc: RTCPeerConnection | null = null;
   private audioCtx: AudioContext | null = null;
+  private gainNode: GainNode | null = null;
   private analyser: AnalyserNode | null = null;
   private levelInterval: ReturnType<typeof setInterval> | null = null;
   private opts: ListenClientOpts;
   private disposed = false;
+  private trackReceived = false;
 
   constructor(opts: ListenClientOpts) {
     this.opts = opts;
@@ -32,27 +35,25 @@ export class ListenClient {
     this.opts.onStateChange("connecting");
 
     try {
-      // 1. Get Firebase token for SFU auth
+      // 1. Get Firebase token
       const user = auth?.currentUser;
       if (!user) throw new Error("Not authenticated");
       const { getIdToken } = await import("firebase/auth");
       const firebaseToken = await getIdToken(user);
 
-      // 2. Fetch listen token to get SFU URL and mic ID
-      const { token: _token, sfu_url, mic_id } =
-        await apiFetch<ListenTokenResponse>(
-          `/devices/${this.opts.deviceId}/listen-token`
-        );
+      // 2. Fetch listen token from backend
+      const { sfu_url, mic_id } = await apiFetch<ListenTokenResponse>(
+        `/devices/${this.opts.deviceId}/listen-token`
+      );
 
       // 3. Open WebSocket to SFU
-      // For local dev, rewrite production SFU URL to localhost
       const wsUrl = this.rewriteSfuUrl(sfu_url);
       await this.openWS(wsUrl);
 
-      // 4. Send join message
-      // room_id format: {shopID}_{micID} — matches ESP32 publisher format
-      // If shopId is not available, try mic_id alone (SFU may resolve)
-      const roomId = this.opts.shopId ? `${this.opts.shopId}_${mic_id}` : mic_id;
+      // 4. Join room as subscriber
+      const roomId = this.opts.shopId
+        ? `${this.opts.shopId}_${mic_id}`
+        : mic_id;
       this.sendWS({
         type: "join",
         room_id: roomId,
@@ -61,9 +62,6 @@ export class ListenClient {
         token: firebaseToken,
         channels: ["audio"],
       });
-
-      // 5. Wait for SDP offer from SFU (server-initiated)
-      // The rest happens in onMessage
     } catch (err) {
       if (!this.disposed) {
         this.opts.onStateChange("error");
@@ -77,24 +75,15 @@ export class ListenClient {
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(url);
       this.ws = ws;
-
       ws.onopen = () => resolve();
-
       ws.onerror = () => reject(new Error("WebSocket connection failed"));
-
       ws.onclose = () => {
-        if (!this.disposed) {
-          this.opts.onStateChange("idle");
-        }
+        if (!this.disposed) this.opts.onStateChange("idle");
       };
-
       ws.onmessage = (event) => {
         try {
-          const msg = JSON.parse(event.data);
-          this.onMessage(msg);
-        } catch {
-          // ignore non-JSON messages
-        }
+          this.onMessage(JSON.parse(event.data));
+        } catch { /* ignore non-JSON */ }
       };
     });
   }
@@ -103,104 +92,104 @@ export class ListenClient {
     if (this.disposed) return;
 
     switch (msg.type) {
-      case "offer": {
-        // SFU sends SDP offer — create PeerConnection and answer
+      case "offer":
         await this.handleOffer(msg.sdp as string);
         break;
-      }
-      case "candidate": {
-        // Trickle ICE candidate from SFU
+      case "candidate":
         if (this.pc && msg.candidate) {
           try {
-            await this.pc.addIceCandidate(
-              new RTCIceCandidate(msg.candidate as RTCIceCandidateInit)
-            );
-          } catch {
-            // ignore duplicate or invalid candidates
-          }
+            await this.pc.addIceCandidate(new RTCIceCandidate(msg.candidate as RTCIceCandidateInit));
+          } catch { /* ignore duplicate/invalid */ }
         }
         break;
-      }
-      case "room_status": {
-        // Initial room info from SFU — connection progressing
-        break;
-      }
-      case "error": {
-        console.error("SFU error:", msg.message);
+      case "error":
+        console.error("[Listen] SFU error:", msg.message || msg.error);
         this.opts.onStateChange("error");
         this.cleanup();
         break;
-      }
     }
   }
 
   private async handleOffer(sdp: string): Promise<void> {
     if (this.disposed) return;
 
-    // Create PeerConnection with STUN servers
-    this.pc = new RTCPeerConnection({
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-    });
+    // Skip renegotiation offers if we already have a working audio track.
+    // Safari rejects duplicate a=msid lines in renegotiation SDPs.
+    if (this.trackReceived && this.pc) return;
 
-    // Handle audio tracks from SFU
-    this.pc.ontrack = (event) => {
-      if (this.disposed) return;
-      const stream = event.streams[0];
-      if (stream) {
-        this.setupAudio(stream);
+    // Create PeerConnection on first offer only
+    if (!this.pc) {
+      this.pc = new RTCPeerConnection({
+        iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+      });
+
+      this.pc.ontrack = (event) => {
+        if (this.disposed || this.trackReceived) return;
+        this.trackReceived = true;
+
+        const stream = event.streams[0] || new MediaStream([event.track]);
+        this.startLevelMeter(stream);
         this.opts.onTrack(stream);
         this.opts.onStateChange("connected");
+      };
+
+      this.pc.onicecandidate = (event) => {
+        if (event.candidate && this.ws?.readyState === WebSocket.OPEN) {
+          this.sendWS({ type: "candidate", candidate: event.candidate.toJSON() });
+        }
+      };
+    }
+
+    // Negotiate
+    try {
+      await this.pc.setRemoteDescription(new RTCSessionDescription({ type: "offer", sdp }));
+      await this.pc.setLocalDescription();
+      const ld = this.pc.localDescription;
+      if (ld) {
+        this.sendWS({ type: "answer", sdp: ld.sdp });
       }
-    };
-
-    // Send ICE candidates to SFU via WebSocket
-    this.pc.onicecandidate = (event) => {
-      if (event.candidate && this.ws?.readyState === WebSocket.OPEN) {
-        this.sendWS({
-          type: "candidate",
-          candidate: event.candidate.toJSON(),
-        });
-      }
-    };
-
-    // Set remote description (SFU's offer) and create answer
-    await this.pc.setRemoteDescription(new RTCSessionDescription({ type: "offer", sdp }));
-
-    const answer = await this.pc.createAnswer();
-    await this.pc.setLocalDescription(answer);
-
-    // Send answer back to SFU
-    this.sendWS({
-      type: "answer",
-      sdp: answer.sdp,
-    });
+    } catch (err) {
+      console.warn("[Listen] SDP negotiation failed:", err);
+    }
   }
 
-  private setupAudio(stream: MediaStream): void {
-    this.audioCtx = new AudioContext();
-    const source = this.audioCtx.createMediaStreamSource(stream);
-    this.analyser = this.audioCtx.createAnalyser();
-    this.analyser.fftSize = 256;
-    this.analyser.smoothingTimeConstant = 0.8;
-    source.connect(this.analyser);
+  /** Audio pipeline: source → gain (+6dB boost) → destination + analyser for waveform */
+  private startLevelMeter(stream: MediaStream): void {
+    try {
+      this.audioCtx = new AudioContext();
+      if (this.audioCtx.state === "suspended") this.audioCtx.resume();
+      const source = this.audioCtx.createMediaStreamSource(stream);
 
-    // Start polling audio level for waveform
-    const dataArray = new Uint8Array(this.analyser.frequencyBinCount);
-    this.levelInterval = setInterval(() => {
-      if (!this.analyser || this.disposed) return;
-      this.analyser.getByteFrequencyData(dataArray);
-      // RMS of frequency data, normalized to 0-1
-      let sum = 0;
-      for (let i = 0; i < dataArray.length; i++) {
-        const v = dataArray[i] / 255;
-        sum += v * v;
-      }
-      const rms = Math.sqrt(sum / dataArray.length);
-      this.opts.onAudioLevel(rms);
-    }, 50);
+      // Gain boost — ESP32 mic output is quiet, amplify for comfortable listening
+      this.gainNode = this.audioCtx.createGain();
+      this.gainNode.gain.value = 3.0;  // +9.5 dB boost
+
+      this.analyser = this.audioCtx.createAnalyser();
+      this.analyser.fftSize = 256;
+      this.analyser.smoothingTimeConstant = 0.8;
+
+      // Route: source → gain → destination (speakers) + analyser (waveform)
+      source.connect(this.gainNode);
+      this.gainNode.connect(this.audioCtx.destination);
+      this.gainNode.connect(this.analyser);
+
+      const dataArray = new Uint8Array(this.analyser.frequencyBinCount);
+      this.levelInterval = setInterval(() => {
+        if (!this.analyser || this.disposed) return;
+        this.analyser.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          const v = dataArray[i] / 255;
+          sum += v * v;
+        }
+        this.opts.onAudioLevel(Math.sqrt(sum / dataArray.length));
+        this.opts.onFrequencyData?.(dataArray);
+      }, 50);
+    } catch {
+      // AnalyserNode is nice-to-have, not critical
+    }
   }
 
-  /** Rewrite production SFU URL to local dev if needed */
   private rewriteSfuUrl(sfuUrl: string): string {
     if (typeof window === "undefined") return sfuUrl;
     const apiBase = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
@@ -217,6 +206,13 @@ export class ListenClient {
     }
   }
 
+  /** Adjust playback volume (0.0 = mute, 1.0 = default, up to ~5.0 for boost) */
+  setVolume(value: number): void {
+    if (this.gainNode) {
+      this.gainNode.gain.value = value;
+    }
+  }
+
   disconnect(): void {
     this.disposed = true;
     this.cleanup();
@@ -224,6 +220,7 @@ export class ListenClient {
   }
 
   private cleanup(): void {
+    this.trackReceived = false;
     if (this.levelInterval) {
       clearInterval(this.levelInterval);
       this.levelInterval = null;
@@ -245,9 +242,7 @@ export class ListenClient {
       this.ws.onclose = null;
       this.ws.onerror = null;
       this.ws.onmessage = null;
-      if (this.ws.readyState === WebSocket.OPEN) {
-        this.ws.close();
-      }
+      if (this.ws.readyState === WebSocket.OPEN) this.ws.close();
       this.ws = null;
     }
   }

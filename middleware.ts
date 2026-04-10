@@ -3,12 +3,16 @@ import type { NextRequest } from "next/server";
 
 export function middleware(request: NextRequest) {
   const session = request.cookies.get("firebase-token");
+  const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+  const path = request.nextUrl.pathname;
 
-  if (request.nextUrl.pathname.startsWith("/dashboard") && !session && process.env.NEXT_PUBLIC_DEMO_MODE !== "true") {
+  // Unauthenticated access to protected routes → login
+  if ((path.startsWith("/dashboard") || path === "/onboarding") && !session && !isDemoMode) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  if (request.nextUrl.pathname === "/login" && session) {
+  // Authenticated user visiting login → dashboard
+  if (path === "/login" && session) {
     return NextResponse.redirect(new URL("/dashboard/devices", request.url));
   }
 
@@ -16,5 +20,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/login"],
+  matcher: ["/dashboard/:path*", "/login", "/onboarding"],
 };

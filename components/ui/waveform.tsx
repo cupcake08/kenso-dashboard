@@ -1,24 +1,32 @@
 "use client";
 
-import { useRef, useEffect, useCallback } from "react";
+import { useRef, useEffect, useCallback, type MutableRefObject } from "react";
 
 interface WaveformProps {
   playing: boolean;
-  audioLevel?: number; // 0-1 real audio level from WebRTC analyser
+  frequencyDataRef?: MutableRefObject<Uint8Array | null>;
   barCount?: number;
   className?: string;
 }
 
-export function Waveform({ playing, audioLevel = 0, barCount = 48, className }: WaveformProps) {
+/**
+ * Real-time audio waveform driven by actual frequency data from WebRTC AnalyserNode.
+ * When no frequency data is available, shows a flat idle state.
+ * When playing, bars map directly to frequency bins — what you see IS what the mic hears.
+ */
+export function Waveform({ playing, frequencyDataRef, barCount = 48, className }: WaveformProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animRef = useRef<number>(0);
   const barsRef = useRef<Float32Array>(new Float32Array(barCount));
-  // Initialize bars with small random values (lazy init on first draw)
-  const barsInitialized = useRef(false);
-  const targetsRef = useRef<Float32Array>(new Float32Array(barCount));
-  const tickRef = useRef(0);
-  const levelRef = useRef(audioLevel);
-  levelRef.current = audioLevel;
+  const sizeRef = useRef({ w: 0, h: 0 });
+  const prefersReducedMotion = useRef(false);
+
+  // Check reduced motion preference once
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      prefersReducedMotion.current = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    }
+  }, []);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -26,74 +34,82 @@ export function Waveform({ playing, audioLevel = 0, barCount = 48, className }: 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    // Only resize canvas when container size actually changes (avoids reflow per frame)
     const dpr = window.devicePixelRatio || 1;
     const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
-    ctx.scale(dpr, dpr);
+    const newW = Math.round(rect.width * dpr);
+    const newH = Math.round(rect.height * dpr);
+    if (sizeRef.current.w !== newW || sizeRef.current.h !== newH) {
+      canvas.width = newW;
+      canvas.height = newH;
+      sizeRef.current = { w: newW, h: newH };
+    }
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     const w = rect.width;
     const h = rect.height;
     const bars = barsRef.current;
-    const targets = targetsRef.current;
+    const freqData = frequencyDataRef?.current;
 
-    // Initialize bars with small random values on first frame
-    if (!barsInitialized.current) {
-      for (let i = 0; i < barCount; i++) {
-        bars[i] = 0.08 + Math.random() * 0.04;
+    // Smoothing factor — lower for reduced motion (less animation)
+    const smoothing = prefersReducedMotion.current ? 0.8 : 0.3;
+
+    // Map frequency bins to bars — mirrored from center outward
+    const halfBars = Math.ceil(barCount / 2);
+    if (playing && freqData && freqData.length > 0) {
+      const binCount = freqData.length;
+      const binsPerBar = Math.max(1, Math.floor(binCount / halfBars));
+      for (let i = 0; i < halfBars; i++) {
+        let sum = 0;
+        const start = i * binsPerBar;
+        const end = Math.min(start + binsPerBar, binCount);
+        for (let j = start; j < end; j++) {
+          sum += freqData[j];
+        }
+        const avg = sum / (end - start) / 255;
+        const centerIdx = halfBars - 1 - i;
+        const leftIdx = centerIdx;
+        const rightIdx = barCount - 1 - centerIdx;
+        bars[leftIdx] += (avg - bars[leftIdx]) * smoothing;
+        if (rightIdx !== leftIdx) bars[rightIdx] += (avg - bars[rightIdx]) * smoothing;
       }
-      barsInitialized.current = true;
+    } else {
+      // Idle: settle bars to a subtle baseline
+      for (let i = 0; i < barCount; i++) {
+        bars[i] += (0.05 - bars[i]) * 0.08;
+      }
     }
 
-    // Update targets periodically
-    tickRef.current++;
-    if (playing && tickRef.current % 6 === 0) {
-      const level = levelRef.current;
-      for (let i = 0; i < barCount; i++) {
-        // Natural-looking amplitudes: center bars taller, edges shorter
-        const center = barCount / 2;
-        const dist = Math.abs(i - center) / center;
-        const base = (1 - dist * 0.6) * 0.85;
-        // Mix real audio level with simulated randomness
-        const realComponent = level * (0.8 + Math.random() * 0.4);
-        const simComponent = base * (0.2 + Math.random() * 0.8);
-        targets[i] = base * (level > 0.01 ? realComponent * 0.7 + simComponent * 0.3 : simComponent);
-      }
-    } else if (!playing && tickRef.current % 6 === 0) {
-      for (let i = 0; i < barCount; i++) {
-        targets[i] = 0.06 + Math.random() * 0.04;
-      }
-    }
-
-    // Lerp bars toward targets
-    const speed = playing ? 0.15 : 0.08;
-    for (let i = 0; i < barCount; i++) {
-      bars[i] += (targets[i] - bars[i]) * speed;
-    }
-
-    // Clear
     ctx.clearRect(0, 0, w, h);
 
-    // Draw bars
-    const gap = 3;
-    const barW = (w - gap * (barCount - 1)) / barCount;
+    const gap = 2;
+    const barW = Math.max(1, (w - gap * (barCount - 1)) / barCount);
     const midY = h / 2;
 
     for (let i = 0; i < barCount; i++) {
       const x = i * (barW + gap);
-      const barH = bars[i] * h * 0.9;
-      const r = Math.min(barW / 2, 2);
+      const barH = Math.max(bars[i] * h * 0.9, 2);
+      const r = Math.min(barW / 2, barH / 2, 2);
 
+      const alpha = playing ? 0.4 + bars[i] * 0.6 : 0.15;
+      // Emerald when playing, muted neutral when idle — fallback for browsers without oklch
       ctx.fillStyle = playing
-        ? `oklch(0.7 0.15 160 / ${0.5 + bars[i] * 0.5})`
-        : `oklch(0.45 0.03 240 / 0.4)`;
+        ? `rgba(52, 211, 153, ${alpha})`
+        : `rgba(148, 163, 184, ${alpha})`;
+
       ctx.beginPath();
-      ctx.roundRect(x, midY - barH / 2, barW, barH, r);
+      if (ctx.roundRect) {
+        ctx.roundRect(x, midY - barH / 2, barW, barH, r);
+      } else {
+        // Fallback for older browsers
+        ctx.rect(x, midY - barH / 2, barW, barH);
+      }
       ctx.fill();
     }
 
     animRef.current = requestAnimationFrame(draw);
-  }, [playing, barCount]);
+  }, [playing, barCount, frequencyDataRef]);
 
   useEffect(() => {
     animRef.current = requestAnimationFrame(draw);
@@ -105,6 +121,8 @@ export function Waveform({ playing, audioLevel = 0, barCount = 48, className }: 
       ref={canvasRef}
       className={className}
       style={{ width: "100%", height: "100%" }}
+      aria-label={playing ? "Live audio waveform" : "Audio waveform — idle"}
+      role="img"
     />
   );
 }

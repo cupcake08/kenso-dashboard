@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Clock, AlertTriangle, FileText, Loader2 } from "lucide-react";
+import { ArrowLeft, Clock, AlertTriangle, FileText, Loader2, Volume2, VolumeX } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { apiFetch, normalizeDevice, normalizeWindow } from "@/lib/api";
 import type { Device, WindowSummary, WindowDetail, RawDevice, RawWindowSummary, RawWindowDetail } from "@/types/api";
@@ -13,8 +13,9 @@ import { BadgeVariant } from "@/components/ui/badge-variant";
 import { Skeleton, WindowSkeleton } from "@/components/ui/skeleton";
 import { Waveform } from "@/components/ui/waveform";
 import { useListenLive } from "@/hooks/use-listen";
+import { RecordingsPlayer } from "@/components/dashboard/recordings-player";
 
-type Tab = "listen" | "recent" | "report";
+type Tab = "listen" | "recordings" | "recent" | "report";
 
 const DEMO_DEVICE: Device = {
   device_id: "dev_001_koramangala",
@@ -60,7 +61,7 @@ export default function DeviceDetailPage() {
   const [selectedWindow, setSelectedWindow] = useState<WindowSummary | null>(null);
   const [windowDetail, setWindowDetail] = useState<WindowDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const { state: listenState, audioLevel, toggle: toggleListen } = useListenLive(
+  const { audioRef, state: listenState, audioLevel, frequencyDataRef, volume, setVolume, toggle: toggleListen } = useListenLive(
     deviceId,
     device?.shop_id ?? ""
   );
@@ -151,6 +152,9 @@ export default function DeviceDetailPage() {
 
   return (
     <div>
+      {/* Hidden audio element for WebRTC playback — must be in DOM for autoplay policy */}
+      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+      <audio ref={audioRef} autoPlay playsInline style={{ display: "none" }} />
       {/* Back */}
       <Link href="/dashboard/devices" className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
         <ArrowLeft className="h-4 w-4" /> Back to devices
@@ -172,7 +176,7 @@ export default function DeviceDetailPage() {
 
       {/* Tabs */}
       <div className="mb-6 flex gap-1 rounded-lg bg-muted p-1 border border-border w-fit">
-        {([["listen", "Listen Live"], ["recent", "Recent"], ["report", "Report"]] as const).map(([t, label]) => (
+        {([["listen", "Listen Live"], ["recordings", "Recordings"], ["recent", "Recent"], ["report", "Report"]] as const).map(([t, label]) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -189,48 +193,109 @@ export default function DeviceDetailPage() {
         {tab === "listen" && (
           <motion.div key="listen" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
             <div className="rounded-xl border border-border bg-card/50 overflow-hidden">
-              <div className="h-32">
-                <Waveform playing={listenState === "connected"} audioLevel={audioLevel} />
+              {/* Waveform */}
+              <div className="h-28 sm:h-32">
+                <Waveform playing={listenState === "connected"} frequencyDataRef={frequencyDataRef} />
               </div>
-              <div className="flex items-center justify-between border-t border-border px-5 py-3">
-                <div className="flex items-center gap-3">
+
+              {/* Controls */}
+              <div className="flex items-center justify-between border-t border-border px-4 py-3 sm:px-5">
+                {/* Status indicator */}
+                <div className="flex items-center gap-2.5">
                   <span
-                    className={`h-2 w-2 rounded-full ${
+                    className={`h-2 w-2 rounded-full shrink-0 transition-colors duration-300 ${
                       listenState === "connected"
                         ? "bg-emerald-500 animate-pulse"
                         : listenState === "connecting"
-                          ? "bg-blue-500 animate-pulse"
-                          : device.status === "offline"
-                            ? "bg-red-500"
-                            : "bg-muted-foreground"
+                          ? "bg-amber-400 animate-pulse"
+                          : listenState === "error"
+                            ? "bg-red-400"
+                            : device.status === "offline"
+                              ? "bg-red-500/60"
+                              : "bg-muted-foreground/40"
                     }`}
                   />
-                  <span className="text-sm text-muted-foreground">
+                  <span className={`text-sm ${
+                    listenState === "connected" ? "text-emerald-400 font-medium" :
+                    listenState === "error" ? "text-red-400" :
+                    "text-muted-foreground"
+                  }`}>
                     {listenState === "connected"
                       ? "Live"
                       : listenState === "connecting"
-                        ? "Connecting…"
+                        ? "Connecting\u2026"
                         : listenState === "error"
-                          ? "Connection failed"
+                          ? "Failed \u2014 tap to retry"
                           : device.status === "offline"
                             ? "Device offline"
-                            : "Ready"
+                            : "Tap to listen"
                     }
                   </span>
                 </div>
-                <button
-                  onClick={toggleListen}
-                  disabled={device.status === "offline" && listenState === "idle"}
-                  className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  aria-label={listenState === "connected" || listenState === "connecting" ? "Stop" : "Play"}
-                >
-                  {listenState === "connected" || listenState === "connecting"
-                    ? <Pause className="h-4 w-4" />
-                    : <Play className="h-4 w-4 ml-0.5" />
-                  }
-                </button>
+
+                {/* Volume + Play */}
+                <div className="flex items-center gap-2.5">
+                  {/* Volume — only visible when connected or connecting */}
+                  <AnimatePresence>
+                    {(listenState === "connected" || listenState === "connecting") && (
+                      <motion.div
+                        initial={{ opacity: 0, width: 0 }}
+                        animate={{ opacity: 1, width: "auto" }}
+                        exit={{ opacity: 0, width: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="flex items-center gap-2 overflow-hidden"
+                      >
+                        <button
+                          onClick={() => setVolume(volume === 0 ? 3.0 : 0)}
+                          className="p-1 rounded text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+                          aria-label={volume === 0 ? "Unmute" : "Mute"}
+                        >
+                          {volume === 0
+                            ? <VolumeX className="h-4 w-4" />
+                            : <Volume2 className="h-4 w-4" />
+                          }
+                        </button>
+                        <input
+                          type="range"
+                          min="0"
+                          max="5"
+                          step="0.1"
+                          value={volume}
+                          onChange={(e) => setVolume(parseFloat(e.target.value))}
+                          className="w-20 h-1 accent-primary cursor-pointer rounded-full"
+                          aria-label="Volume"
+                        />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* Play/Pause button */}
+                  <button
+                    onClick={toggleListen}
+                    disabled={device.status === "offline" && listenState === "idle"}
+                    className={`flex h-10 w-10 items-center justify-center rounded-full transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-95 ${
+                      listenState === "connected"
+                        ? "bg-red-500/90 text-white hover:bg-red-500"
+                        : "bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed"
+                    }`}
+                    aria-label={listenState === "connected" || listenState === "connecting" ? "Stop listening" : "Start listening"}
+                  >
+                    {listenState === "connecting"
+                      ? <Loader2 className="h-4 w-4 animate-spin" />
+                      : listenState === "connected"
+                        ? <Pause className="h-4 w-4" />
+                        : <Play className="h-4 w-4 ml-0.5" />
+                    }
+                  </button>
+                </div>
               </div>
             </div>
+          </motion.div>
+        )}
+
+        {tab === "recordings" && (
+          <motion.div key="recordings" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
+            <RecordingsPlayer deviceId={deviceId} />
           </motion.div>
         )}
 

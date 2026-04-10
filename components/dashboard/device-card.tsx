@@ -7,6 +7,8 @@ import type { Device } from "@/types/api";
 
 interface DeviceCardProps {
   device: Device;
+  onToggle?: (device: Device, action: "enable" | "disable") => void;
+  toggling?: boolean;
 }
 
 function StatusDot({ status }: { status: Device["status"] }) {
@@ -18,6 +20,9 @@ function StatusDot({ status }: { status: Device["status"] }) {
       </span>
     );
   }
+  if (status === "pending") {
+    return <span className="h-3 w-3 rounded-full bg-yellow-500" />;
+  }
   return (
     <span
       className={cn(
@@ -28,10 +33,13 @@ function StatusDot({ status }: { status: Device["status"] }) {
   );
 }
 
-export function DeviceCard({ device }: DeviceCardProps) {
+export function DeviceCard({ device, onToggle, toggling }: DeviceCardProps) {
   const lastSeen = device.last_seen_at
     ? new Date(device.last_seen_at).toLocaleString()
     : "—";
+
+  const isPending = device.status === "pending";
+  const isOnline = device.status === "online" || device.status === "streaming";
 
   return (
     <motion.div
@@ -53,7 +61,8 @@ export function DeviceCard({ device }: DeviceCardProps) {
             "text-xs font-medium capitalize",
             device.status === "online" && "text-primary",
             device.status === "offline" && "text-red-400",
-            device.status === "streaming" && "text-blue-400"
+            device.status === "streaming" && "text-blue-400",
+            device.status === "pending" && "text-yellow-500"
           )}
         >
           {device.status}
@@ -74,24 +83,50 @@ export function DeviceCard({ device }: DeviceCardProps) {
       <p className="mt-1 text-xs text-muted-foreground">Last seen: {lastSeen}</p>
 
       {/* Actions */}
-      <div className="mt-4 flex gap-2">
-        <TransitionLink
-          href={`/dashboard/devices/${device.device_id}`}
-          transitionName={`device-${device.device_id}`}
-          className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-muted py-2 text-sm font-medium text-foreground hover:bg-primary hover:text-primary-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-        >
-          <Mic className="h-4 w-4" />
-          Listen
-        </TransitionLink>
-        <TransitionLink
-          href={`/dashboard/devices/${device.device_id}?tab=report`}
-          transitionName={`device-${device.device_id}`}
-          className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-input py-2 text-sm font-medium text-muted-foreground hover:border-muted-foreground/30 hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-        >
-          <BarChart3 className="h-4 w-4" />
-          Reports
-        </TransitionLink>
-      </div>
+      {device.status !== "pending" && (
+        <div className="mt-4 flex gap-2">
+          <TransitionLink
+            href={`/dashboard/devices/${device.device_id}`}
+            transitionName={`device-${device.device_id}`}
+            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-muted py-2 text-sm font-medium text-foreground hover:bg-primary hover:text-primary-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          >
+            <Mic className="h-4 w-4" />
+            Listen
+          </TransitionLink>
+          <TransitionLink
+            href={`/dashboard/devices/${device.device_id}?tab=report`}
+            transitionName={`device-${device.device_id}`}
+            className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-input py-2 text-sm font-medium text-muted-foreground hover:border-muted-foreground/30 hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          >
+            <BarChart3 className="h-4 w-4" />
+            Reports
+          </TransitionLink>
+        </div>
+      )}
+
+      {/* Enable / Disable */}
+      {onToggle && isPending && (
+        <div className="mt-3">
+          <button
+            onClick={() => onToggle(device, "enable")}
+            disabled={toggling}
+            className="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          >
+            {toggling ? "Enabling…" : "Enable Device"}
+          </button>
+        </div>
+      )}
+      {onToggle && isOnline && (
+        <div className="mt-3 flex justify-end">
+          <button
+            onClick={() => onToggle(device, "disable")}
+            disabled={toggling}
+            className="rounded-md px-3 py-1 text-xs font-medium text-muted-foreground hover:text-red-400 hover:bg-red-400/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          >
+            {toggling ? "Disabling…" : "Disable"}
+          </button>
+        </div>
+      )}
     </motion.div>
   );
 }

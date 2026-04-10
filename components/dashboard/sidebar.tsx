@@ -1,12 +1,14 @@
 "use client";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
-import { Mic, CreditCard, Settings, ChevronLeft, ChevronRight, Layers } from "lucide-react";
+import { Mic, CreditCard, Settings, ChevronLeft, ChevronRight, BarChart3 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/dashboard/devices", icon: Mic, label: "Devices" },
+  { href: "/dashboard/analysis", icon: BarChart3, label: "Analysis" },
   { href: "/dashboard/usage", icon: CreditCard, label: "Usage" },
   { href: "/dashboard/settings", icon: Settings, label: "Settings" },
 ];
@@ -27,24 +29,22 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
       transition={{ type: "spring", stiffness: 300, damping: 30 }}
     >
       {/* Logo */}
-      <div className="flex h-16 items-center gap-3 border-b border-border px-4">
-        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary">
-          <Layers className="h-4 w-4 text-primary-foreground" />
-        </div>
+      <div className={cn("flex h-14 items-center border-b border-border", collapsed ? "justify-center px-2" : "gap-2.5 px-4")}>
+        <Image src="/logo.png" alt="KnownSense.AI" width={28} height={28} className="flex-shrink-0" />
         {!collapsed && (
           <motion.span
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="text-base font-semibold text-foreground whitespace-nowrap"
+            className="text-sm font-bold text-foreground tracking-tight whitespace-nowrap"
           >
-            Kenso
+            KnownSense.AI
           </motion.span>
         )}
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 space-y-1 p-3">
+      <nav className="flex-1 space-y-1 p-2">
         {navItems.map(({ href, icon: Icon, label }) => {
           const active = pathname.startsWith(href);
           return (
@@ -52,7 +52,8 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
               key={href}
               href={href}
               className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                "flex items-center rounded-lg text-sm font-medium transition-colors duration-150",
+                collapsed ? "justify-center p-2.5" : "gap-3 px-3 py-2.5",
                 active
                   ? "bg-primary/10 text-primary"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground"

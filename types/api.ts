@@ -6,7 +6,7 @@ export interface RawDevice {
   shop_id: string;
   label: string;
   location: string;
-  status: "active" | "soft_deleted";
+  status: "active" | "soft_deleted" | "pending";
   last_seen_unix: number;
 }
 
@@ -50,6 +50,8 @@ export interface RawWindowUtterance {
 export interface RawCreditsResponse {
   balance: number;
   plan: string;
+  subscription_state?: string;
+  trial_ends_at_unix?: number;
   history: RawTransaction[];
 }
 
@@ -77,12 +79,16 @@ export interface ListenTokenResponse {
 
 // Normalized types for UI consumption (ISO dates, semantic field names)
 
+// Device represents a mic in the enterprise dashboard. Despite the field name
+// "device_id", this holds the mic_id from the backend's /devices endpoint
+// (which lists mics, not hardware devices). The hardware device_id is not
+// exposed in the dashboard API.
 export interface Device {
   device_id: string;
   shop_id: string;
   label: string;
   location: string;
-  status: "online" | "offline" | "streaming";
+  status: "online" | "offline" | "streaming" | "pending";
   last_seen_at: string;
 }
 
@@ -135,4 +141,14 @@ export interface PlanResponse {
   plan: string;
   billing_cycle: string;
   price_per_month: number;
+}
+
+// GET /v2/dashboard/subscription-status
+export interface RawSubscriptionStatus {
+  state: string;
+  in_grace_period: boolean;
+  grace_days_remaining: number;
+  hard_blocked: boolean;
+  trial_ends_at_unix?: number;
+  period_end_unix?: number;
 }

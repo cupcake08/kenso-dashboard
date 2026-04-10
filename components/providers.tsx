@@ -3,18 +3,27 @@
 import { useEffect } from "react";
 import { MotionConfig } from "framer-motion";
 
+export function setAuthCookie(token: string) {
+  const secure = typeof window !== "undefined" && window.location.protocol === "https:" ? "; secure" : "";
+  document.cookie = `firebase-token=${token}; path=/${secure}; samesite=lax; max-age=${60 * 60}`;
+}
+
+export function clearAuthCookie() {
+  document.cookie = "firebase-token=; path=/; max-age=0";
+}
+
 export function Providers({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (process.env.NEXT_PUBLIC_DEMO_MODE === "true") return;
     let unsubscribe: (() => void) | undefined;
-    import("firebase/auth").then(({ onAuthStateChanged }) => {
+    import("firebase/auth").then(({ onIdTokenChanged }) => {
       import("@/lib/firebase").then(({ auth }) => {
         if (!auth) return;
-        unsubscribe = onAuthStateChanged(auth, (user) => {
+        unsubscribe = onIdTokenChanged(auth, (user) => {
           if (user) {
-            user.getIdToken().then((token) => {
-              document.cookie = `firebase-token=${token}; path=/; secure; samesite=strict; max-age=${60 * 60}`;
-            });
+            user.getIdToken().then((token) => setAuthCookie(token));
+          } else {
+            clearAuthCookie();
           }
         });
       });

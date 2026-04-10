@@ -1,10 +1,15 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { Providers } from "@/components/providers";
+import { Toaster } from "sonner";
 
 export const metadata: Metadata = {
-  title: "Kenso Dashboard",
-  description: "Kenso Enterprise Audio Dashboard",
+  title: "KnownSense.AI",
+  description: "KnownSense.AI Enterprise Audio Dashboard",
+  icons: {
+    icon: "/favicon.png",
+    apple: "/apple-icon.png",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -12,6 +17,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body>
         <Providers>{children}</Providers>
+        <Toaster
+          theme="dark"
+          position="bottom-right"
+          toastOptions={{
+            style: {
+              background: "hsl(217 33% 9%)",
+              border: "1px solid hsl(215 14% 16%)",
+              color: "hsl(210 40% 98%)",
+            },
+          }}
+        />
       </body>
     </html>
   );
