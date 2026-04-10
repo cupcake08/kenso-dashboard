@@ -12,7 +12,7 @@ import { whoami } from "@/lib/api";
 
 const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
-type Tab = "signin" | "signup";
+type Tab = "signin" | "signup" | "reset";
 
 const FIREBASE_ERRORS: Record<string, string> = {
   "auth/wrong-password": "Invalid email or password.",
@@ -22,7 +22,7 @@ const FIREBASE_ERRORS: Record<string, string> = {
   "auth/weak-password": "Password must be at least 6 characters.",
   "auth/invalid-email": "Please enter a valid email address.",
   "auth/too-many-requests": "Too many attempts. Please try again later.",
-  "auth/network-request-failed": "Network error. Make sure the Firebase emulator is running.",
+  "auth/network-request-failed": "Network error. Check your connection.",
 };
 
 function friendlyError(err: unknown): string {
@@ -40,6 +40,7 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -65,6 +66,23 @@ export default function LoginPage() {
       const who = await whoami();
       const hasCompany = who?.memberships?.some((m) => m.status === "active");
       router.push(hasCompany ? "/dashboard/devices" : "/onboarding");
+    } catch (err) {
+      setError(friendlyError(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleReset(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      const { sendPasswordResetEmail } = await import("firebase/auth");
+      const { auth } = await import("@/lib/firebase");
+      if (!auth) throw new Error("Firebase not initialized");
+      await sendPasswordResetEmail(auth, email);
+      setResetSent(true);
     } catch (err) {
       setError(friendlyError(err));
     } finally {
@@ -120,40 +138,84 @@ export default function LoginPage() {
           {/* Heading */}
           <div className="mb-8">
             <h2 className="text-2xl font-bold text-foreground">
-              {tab === "signin" ? "Welcome back" : "Create your account"}
+              {tab === "signin" ? "Welcome back" : tab === "signup" ? "Create your account" : "Reset password"}
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
               {tab === "signin"
                 ? "Sign in to access your dashboard"
-                : "Get started with KnownSense.AI"
-              }
+                : tab === "signup"
+                ? "Get started with KnownSense.AI"
+                : "Enter your email and we'll send a reset link"}
             </p>
           </div>
 
-          {/* Tabs */}
-          <div className="relative flex mb-6 bg-muted rounded-lg p-1">
-            {(["signin", "signup"] as Tab[]).map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => { setTab(t); setError(""); }}
-                className={`relative flex-1 py-2 text-sm font-medium rounded-md transition-colors z-10 ${
-                  tab === t ? "text-foreground" : "text-muted-foreground hover:text-foreground/70"
-                }`}
-              >
-                {t === "signin" ? "Sign In" : "Sign Up"}
-              </button>
-            ))}
-            <motion.div
-              className="absolute inset-y-1 rounded-md bg-card border border-border shadow-sm"
-              style={{ width: "calc(50% - 4px)" }}
-              animate={{ left: tab === "signin" ? "4px" : "calc(50%)" }}
-              transition={{ type: "spring", stiffness: 400, damping: 30 }}
-            />
-          </div>
+          {/* Tabs — hidden on reset view */}
+          {tab !== "reset" && (
+            <div className="relative flex mb-6 bg-muted rounded-lg p-1">
+              {(["signin", "signup"] as const).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => { setTab(t); setError(""); }}
+                  className={`relative flex-1 py-2 text-sm font-medium rounded-md transition-colors z-10 ${
+                    tab === t ? "text-foreground" : "text-muted-foreground hover:text-foreground/70"
+                  }`}
+                >
+                  {t === "signin" ? "Sign In" : "Sign Up"}
+                </button>
+              ))}
+              <motion.div
+                className="absolute inset-y-1 rounded-md bg-card border border-border shadow-sm"
+                style={{ width: "calc(50% - 4px)" }}
+                animate={{ left: tab === "signin" ? "4px" : "calc(50%)" }}
+                transition={{ type: "spring", stiffness: 400, damping: 30 }}
+              />
+            </div>
+          )}
 
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Reset password form */}
+          {tab === "reset" && (
+            <form onSubmit={handleReset} className="space-y-4">
+              {resetSent ? (
+                <div className="rounded-lg border border-emerald-400/20 bg-emerald-400/5 px-4 py-3 text-sm text-emerald-400">
+                  Check your email for a password reset link.
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label htmlFor="reset-email" className="text-xs font-medium text-muted-foreground mb-1.5 block">Email</label>
+                    <Input id="reset-email" type="email" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
+                  </div>
+                  <AnimatePresence>
+                    {error && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -4 }}
+                        role="alert"
+                        className="rounded-lg border border-red-400/20 bg-red-400/5 px-3 py-2 text-sm text-red-400"
+                      >
+                        {error}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                  <Button type="submit" className="w-full" size="lg" disabled={loading}>
+                    {loading ? "Sending..." : "Send Reset Link"}
+                  </Button>
+                </>
+              )}
+              <button
+                type="button"
+                onClick={() => { setTab("signin"); setError(""); setResetSent(false); }}
+                className="w-full text-center text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                ← Back to Sign In
+              </button>
+            </form>
+          )}
+
+          {/* Sign in / Sign up form */}
+          {tab !== "reset" && <form onSubmit={handleSubmit} className="space-y-4">
             <AnimatePresence mode="wait">
               {tab === "signup" && (
                 <motion.div
@@ -175,7 +237,18 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label htmlFor="password" className="text-xs font-medium text-muted-foreground mb-1.5 block">Password</label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label htmlFor="password" className="text-xs font-medium text-muted-foreground">Password</label>
+                {tab === "signin" && (
+                  <button
+                    type="button"
+                    onClick={() => { setTab("reset"); setError(""); setResetSent(false); }}
+                    className="text-xs text-primary hover:underline focus-visible:outline-none"
+                  >
+                    Forgot password?
+                  </button>
+                )}
+              </div>
               <div className="relative">
                 <Input
                   id="password"
@@ -219,15 +292,16 @@ export default function LoginPage() {
                 : tab === "signup" ? "Create Account" : "Sign In"
               }
             </Button>
-          </form>
+          </form>}
 
           {/* Footer text */}
-          <p className="mt-6 text-center text-xs text-muted-foreground/50">
-            {tab === "signin"
-              ? "Don\u2019t have an account? Switch to Sign Up above."
-              : "Already have an account? Switch to Sign In above."
-            }
-          </p>
+          {tab !== "reset" && (
+            <p className="mt-6 text-center text-xs text-muted-foreground/50">
+              {tab === "signin"
+                ? "Don\u2019t have an account? Switch to Sign Up above."
+                : "Already have an account? Switch to Sign In above."}
+            </p>
+          )}
         </motion.div>
       </div>
     </div>
