@@ -11,11 +11,11 @@ interface DeviceCardProps {
   toggling?: boolean;
 }
 
-// Guard against invalid dates and Go's zero time (0001-01-01)
-function timeAgo(isoString: string): string {
-  if (!isoString) return "—";
+// Returns null when timestamp is invalid/zero (Go zero time = 0001-01-01)
+function timeAgo(isoString: string): string | null {
+  if (!isoString) return null;
   const date = new Date(isoString);
-  if (isNaN(date.getTime()) || date.getFullYear() < 2020) return "—";
+  if (isNaN(date.getTime()) || date.getFullYear() < 2020) return null;
   const diff = Date.now() - date.getTime();
   if (diff < 0) return "just now";
   const mins = Math.floor(diff / 60000);
@@ -77,7 +77,11 @@ export function DeviceCard({ device, onToggle, toggling }: DeviceCardProps) {
         {device.location && (
           <p className="text-sm text-muted-foreground">{device.location}</p>
         )}
-        <p className="text-xs text-muted-foreground/50">{timeAgo(device.last_seen_at)}</p>
+        <p className="text-xs text-muted-foreground/50">
+          {timeAgo(device.last_seen_at) ?? (
+            (device.status === "online" || device.status === "streaming") ? "Active" : null
+          )}
+        </p>
       </div>
 
       {/* Zone 3 — Actions (generous gap to separate doing from knowing) */}
