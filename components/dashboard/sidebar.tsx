@@ -3,11 +3,12 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
-import { Mic, CreditCard, Settings, ChevronLeft, ChevronRight, BarChart3 } from "lucide-react";
+import { Mic, CreditCard, Settings, ChevronLeft, ChevronRight, BarChart3, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/dashboard/devices", icon: Mic, label: "Devices" },
+  { href: "/dashboard/operating-hours", icon: Clock, label: "Hours" },
   { href: "/dashboard/analysis", icon: BarChart3, label: "Analysis" },
   { href: "/dashboard/usage", icon: CreditCard, label: "Usage" },
   { href: "/dashboard/settings", icon: Settings, label: "Settings" },
