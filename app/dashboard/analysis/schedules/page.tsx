@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 import { toast } from "sonner";
 import { listSchedules, pauseSchedule, resumeSchedule, createSchedule, apiFetch } from "@/lib/api";
-import { cronToDaysLabel } from "@/lib/cron";
+import { cronToDaysLabel, expandCronDays } from "@/lib/cron";
 import type { AnalysisSchedule } from "@/types/analysis";
 import { BadgeVariant } from "@/components/ui/badge-variant";
 import { Button } from "@/components/ui/button";
@@ -105,6 +105,42 @@ function isOvernightWindow(startTime?: string, endTime?: string): boolean {
   return eh * 60 + em <= sh * 60 + sm && !(sh === eh && sm === em);
 }
 
+// Compute a plausible next-run ISO string for the demo-mode optimistic update.
+// In real mode this isn't called — loadSchedules() refetches the server-
+// computed next_run_at. In demo we need a client-side approximation so new
+// schedules don't render with "1970-01-01" as their next run after create.
+//
+// Strategy: for one-time with a user-picked unix > 0, use that. For recurring,
+// walk forward day-by-day from today, find the first day whose day-of-week is
+// in the cron's day field, and set the time to the end-of-window (matching
+// how the real backend computes NextRunAt). Ignores timezone for simplicity —
+// this is demo data, the cron in demo is local-time-ish.
+function computeDemoNextRunAt(data: CreateSchedulePayload): string | undefined {
+  if (data.schedule_type === "one_time") {
+    return data.next_run_unix > 0
+      ? new Date(data.next_run_unix * 1000).toISOString()
+      : undefined;
+  }
+  const parts = data.recurrence_rule.split(" ");
+  if (parts.length !== 5) return undefined;
+  const minute = parseInt(parts[0]);
+  const hour = parseInt(parts[1]);
+  if (Number.isNaN(minute) || Number.isNaN(hour)) return undefined;
+  const days = expandCronDays(parts[4]);
+  if (days.length === 0) return undefined;
+
+  const now = new Date();
+  for (let offset = 0; offset < 8; offset++) {
+    const candidate = new Date(now.getTime() + offset * 86_400_000);
+    if (!days.includes(candidate.getDay())) continue;
+    candidate.setHours(hour, minute, 0, 0);
+    // If this is today and the time has already passed, keep walking.
+    if (candidate.getTime() <= now.getTime()) continue;
+    return candidate.toISOString();
+  }
+  return undefined;
+}
+
 function targetLabel(s: AnalysisSchedule): string {
   if (s.shopIds && s.shopIds.length > 0) {
     return `${s.shopIds.length} location${s.shopIds.length !== 1 ? "s" : ""}`;
@@ -161,6 +197,11 @@ export default function SchedulesPage() {
   async function handleFormSubmit(data: CreateSchedulePayload) {
     if (IS_DEMO) {
       await new Promise((r) => setTimeout(r, 500));
+      // Recurring schedules send next_run_unix=0 so the server can compute
+      // NextRunAt correctly. In demo there's no server, so approximate it
+      // client-side to avoid rendering "1970-01-01" as the next run. Empty
+      // string falls through to formatRelative's "—" placeholder.
+      const demoNextRunAt = computeDemoNextRunAt(data) ?? "";
       if (formMode === "new") {
         const tmplNames: Record<string, string> = {
           tmpl_staff: "Staff Performance Review",
@@ -182,7 +223,7 @@ export default function SchedulesPage() {
           timezone: data.timezone,
           freeTextNotes: data.free_text_notes,
           enabled: true,
-          nextRunAt: new Date(data.next_run_unix * 1000).toISOString(),
+          nextRunAt: demoNextRunAt,
           runCount: 0,
           createdAt: new Date().toISOString(),
         };
@@ -202,7 +243,9 @@ export default function SchedulesPage() {
                   analysisEndTime: data.analysis_end_time,
                   timezone: data.timezone,
                   freeTextNotes: data.free_text_notes,
-                  nextRunAt: new Date(data.next_run_unix * 1000).toISOString(),
+                  // Only overwrite nextRunAt if we computed a real one —
+                  // otherwise preserve the existing value to avoid a flash.
+                  nextRunAt: demoNextRunAt || s.nextRunAt,
                 }
               : s
           )
