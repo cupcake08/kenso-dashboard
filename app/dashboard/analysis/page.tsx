@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { BarChart3, Shield, Users, TrendingUp, Plus, Loader2, ChevronRight, Gift } from "lucide-react";
+import { BarChart3, Shield, Users, TrendingUp, Plus, Loader2, ChevronRight, Gift, CalendarClock } from "lucide-react";
 import { listTemplates, listJobs, apiFetch, normalizeCredits } from "@/lib/api";
 import type { AnalysisTemplate, AnalysisJob } from "@/types/analysis";
 import type { RawCreditsResponse } from "@/types/api";
@@ -160,15 +160,23 @@ export default function AnalysisPage() {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Analysis</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Analysis</h1>
           <p className="mt-1 text-sm text-muted-foreground">Run AI-powered analysis on your audio recordings</p>
         </div>
-        <Button onClick={() => openModal()}>
-          <Plus className="h-4 w-4 mr-2" />
-          New Analysis
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" asChild>
+            <Link href="/dashboard/analysis/schedules">
+              <CalendarClock className="h-4 w-4 mr-2" />
+              Schedules
+            </Link>
+          </Button>
+          <Button onClick={() => openModal()}>
+            <Plus className="h-4 w-4 mr-2" />
+            New Analysis
+          </Button>
+        </div>
       </div>
 
       {/* Error banner */}
@@ -230,12 +238,7 @@ export default function AnalysisPage() {
 
       {/* Recent Jobs */}
       <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xs font-medium uppercase tracking-widest text-muted-foreground">Recent Jobs</h2>
-          <Link href="/dashboard/analysis/schedules" className="text-xs text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
-            Manage schedules →
-          </Link>
-        </div>
+        <h2 className="text-xs font-medium uppercase tracking-widest text-muted-foreground mb-4">Recent Jobs</h2>
         {jobs.length === 0 ? (
           <div className="rounded-xl border border-border bg-card/30 p-10 text-center">
             <BarChart3 className="h-7 w-7 text-muted-foreground/30 mx-auto mb-3" />
