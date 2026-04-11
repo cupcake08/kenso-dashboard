@@ -253,6 +253,8 @@ export function normalizeJob(raw: RawAnalysisJob): AnalysisJob {
 export function normalizeSchedule(raw: RawAnalysisSchedule): AnalysisSchedule {
   return {
     scheduleId: raw.schedule_id,
+    companyId: raw.company_id,
+    createdBy: raw.created_by,
     templateId: raw.template_id,
     templateName: raw.template_name,
     micIds: raw.mic_ids,
@@ -264,13 +266,15 @@ export function normalizeSchedule(raw: RawAnalysisSchedule): AnalysisSchedule {
     analysisEndTime: raw.analysis_end_time,
     timezone: raw.timezone,
     freeTextNotes: raw.free_text_notes,
-    enabled: raw.enabled,
+    enabled: raw.enabled ?? true,
     nextRunAt: raw.next_run_at,
     lastRunAt: raw.last_run_at,
+    lastJobId: raw.last_job_id,
     pausedUntil: raw.paused_until,
     pauseReason: raw.pause_reason,
     runCount: raw.run_count,
     createdAt: raw.created_at,
+    updatedAt: raw.updated_at,
   };
 }
 
@@ -383,15 +387,15 @@ export async function deleteOperatingHours(shopId: string): Promise<void> {
   await apiFetch(`/operating-hours/${shopId}`, { method: "DELETE" });
 }
 
-export async function pauseOperatingHours(shopId: string, pausedUntil: string, reason?: string): Promise<OperatingSchedule> {
-  return apiFetch<OperatingSchedule>(`/operating-hours/${shopId}/pause`, {
+export async function pauseOperatingHours(shopId: string, pausedUntil: string, reason?: string): Promise<{ shop_id: string; status: string }> {
+  return apiFetch<{ shop_id: string; status: string }>(`/operating-hours/${shopId}/pause`, {
     method: "PATCH",
     body: JSON.stringify({ paused_until: pausedUntil, reason }),
   });
 }
 
-export async function resumeOperatingHours(shopId: string): Promise<OperatingSchedule> {
-  return apiFetch<OperatingSchedule>(`/operating-hours/${shopId}/resume`, {
+export async function resumeOperatingHours(shopId: string): Promise<{ shop_id: string; status: string }> {
+  return apiFetch<{ shop_id: string; status: string }>(`/operating-hours/${shopId}/resume`, {
     method: "PATCH",
   });
 }

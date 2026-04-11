@@ -81,6 +81,7 @@ export interface RawEstimateResponse {
 export interface RawAnalysisSchedule {
   schedule_id: string;
   company_id: string;
+  created_by: string;
   template_id: string;
   template_name: string;
   mic_ids: string[];
@@ -100,6 +101,7 @@ export interface RawAnalysisSchedule {
   pause_reason?: string;
   run_count: number;
   created_at: string;
+  updated_at: string;
 }
 
 // Normalized types for UI consumption
@@ -176,6 +178,8 @@ export interface AnalysisHighlight {
 
 export interface AnalysisSchedule {
   scheduleId: string;
+  companyId?: string;
+  createdBy?: string;
   templateId: string;
   templateName: string;
   micIds: string[];
@@ -190,10 +194,12 @@ export interface AnalysisSchedule {
   enabled: boolean;
   nextRunAt: string; // ISO
   lastRunAt?: string;
+  lastJobId?: string;
   pausedUntil?: string;
   pauseReason?: string;
   runCount: number;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface EstimateResult {
