@@ -33,12 +33,14 @@ ENV NEXT_PUBLIC_DEMO_MODE=$NEXT_PUBLIC_DEMO_MODE
 
 RUN bun run build
 
-# Production image
-FROM oven/bun:1-slim AS runner
+# Production image — oven/bun:1-alpine is smaller than :1-slim (Debian) and
+# ships BusyBox addgroup/adduser out of the box. Runtime uses bun directly
+# against Next.js's standalone server.js.
+FROM oven/bun:1-alpine AS runner
 ENV NODE_ENV=production
 
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
 
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
@@ -49,4 +51,4 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-CMD ["node", "server.js"]
+CMD ["bun", "server.js"]
