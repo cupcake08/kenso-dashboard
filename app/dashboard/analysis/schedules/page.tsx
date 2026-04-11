@@ -338,9 +338,11 @@ export default function SchedulesPage() {
       <div className="flex items-end justify-between gap-4">
         <div className="min-w-0">
           <div className="flex items-baseline gap-3">
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">Schedules</h1>
+            <h1 className="text-2xl lg:text-[1.75rem] font-bold tracking-[-0.02em] text-foreground">
+              Schedules
+            </h1>
             {schedules.length > 0 && (
-              <span className="text-xs font-medium tabular-nums text-muted-foreground">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.08em] slashed-zero tabular-nums text-muted-foreground">
                 {schedules.length} total
                 {activeCount > 0 && activeCount !== schedules.length && (
                   <> · <span className="text-emerald-400">{activeCount} active</span></>
@@ -386,8 +388,8 @@ export default function SchedulesPage() {
             <div className="mx-auto mb-4 flex h-10 w-10 items-center justify-center rounded-full border border-border bg-background">
               <CalendarClock className="h-5 w-5 text-muted-foreground" />
             </div>
-            <h3 className="text-sm font-semibold text-foreground">No schedules yet</h3>
-            <p className="mt-1 text-xs text-muted-foreground">
+            <h3 className="text-base font-bold tracking-tight text-foreground">No schedules yet</h3>
+            <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
               Automate analysis by running templates on a recurring schedule, or trigger a one-time analysis for a specific window.
             </p>
             {formMode === null && (
@@ -410,14 +412,14 @@ export default function SchedulesPage() {
           <div className="hidden lg:block rounded-xl border border-border overflow-hidden bg-card/30">
             <table className="w-full text-sm">
               <thead className="border-b border-border bg-muted/20">
-                <tr>
-                  <th className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Template</th>
-                  <th className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-wider text-muted-foreground whitespace-nowrap">Target</th>
-                  <th className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Schedule</th>
-                  <th className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Status</th>
-                  <th className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-wider text-muted-foreground whitespace-nowrap">Next run</th>
-                  <th className="px-4 py-3 text-right text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Runs</th>
-                  <th className="px-4 py-3 w-1" />
+                <tr className="[&>th]:px-4 [&>th]:py-3 [&>th]:text-[10px] [&>th]:font-semibold [&>th]:uppercase [&>th]:tracking-[0.08em] [&>th]:text-muted-foreground">
+                  <th className="text-left">Template</th>
+                  <th className="text-left whitespace-nowrap">Target</th>
+                  <th className="text-left">Schedule</th>
+                  <th className="text-left">Status</th>
+                  <th className="text-left whitespace-nowrap">Next run</th>
+                  <th className="!text-right">Runs</th>
+                  <th className="w-1" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -441,21 +443,21 @@ export default function SchedulesPage() {
                       )}
                     >
                       <td className="px-4 py-4">
-                        <p className="text-[0.9375rem] font-semibold tracking-tight text-foreground leading-tight">
+                        <p className="text-[0.9375rem] font-bold tracking-[-0.015em] text-foreground leading-[1.3]">
                           {s.templateName}
                         </p>
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap">
-                        <span className="text-xs tabular-nums text-muted-foreground">
+                        <span className="text-xs slashed-zero tabular-nums text-muted-foreground">
                           {targetLabel(s)}
                         </span>
                       </td>
                       <td className="px-4 py-4">
-                        <p className="text-sm text-foreground leading-tight">
+                        <p className="text-sm font-medium text-foreground leading-[1.3]">
                           {cronToHuman(s.recurrenceRule)}
                         </p>
                         {s.analysisStartTime && s.analysisEndTime && (
-                          <p className="mt-1 text-xs tabular-nums text-muted-foreground">
+                          <p className="mt-1 text-[11px] slashed-zero tabular-nums text-muted-foreground/70">
                             {s.analysisStartTime}–{s.analysisEndTime}
                           </p>
                         )}
@@ -463,24 +465,24 @@ export default function SchedulesPage() {
                       <td className="px-4 py-4">
                         {isPaused ? (
                           <div className="space-y-1">
-                            <BadgeVariant variant="amber" className="text-xs">
+                            <BadgeVariant variant="amber" className="text-[10px] font-semibold uppercase tracking-[0.06em]">
                               <span className="h-1.5 w-1.5 rounded-full bg-amber-400" aria-hidden />
                               Paused
                             </BadgeVariant>
                             {s.pauseReason && (
                               <p className="text-[11px] text-muted-foreground italic">{s.pauseReason}</p>
                             )}
-                            <p className="text-[11px] tabular-nums text-muted-foreground">
+                            <p className="text-[11px] slashed-zero tabular-nums text-muted-foreground">
                               until {new Date(s.pausedUntil!).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
                             </p>
                           </div>
                         ) : s.enabled ? (
-                          <BadgeVariant variant="emerald" className="text-xs">
+                          <BadgeVariant variant="emerald" className="text-[10px] font-semibold uppercase tracking-[0.06em]">
                             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden />
                             Active
                           </BadgeVariant>
                         ) : (
-                          <BadgeVariant variant="slate" className="text-xs">
+                          <BadgeVariant variant="slate" className="text-[10px] font-semibold uppercase tracking-[0.06em]">
                             <span className="h-1.5 w-1.5 rounded-full bg-slate-500" aria-hidden />
                             Disabled
                           </BadgeVariant>
@@ -489,20 +491,22 @@ export default function SchedulesPage() {
                       <td className="px-4 py-4 whitespace-nowrap">
                         <span
                           className={cn(
-                            "text-xs tabular-nums",
-                            imminent ? "font-semibold text-emerald-400" : "text-muted-foreground"
+                            "inline-flex items-center gap-1.5 text-[0.8125rem] slashed-zero tabular-nums",
+                            imminent ? "font-bold text-emerald-400" : "font-medium text-muted-foreground"
                           )}
                         >
                           {imminent && (
-                            <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" aria-hidden />
+                            <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" aria-hidden />
                           )}
                           {formatRelative(s.nextRunAt, now)}
                         </span>
                       </td>
                       <td className="px-4 py-4 text-right">
                         <span className={cn(
-                          "text-sm tabular-nums",
-                          s.runCount === 0 ? "text-muted-foreground/50" : "font-medium text-foreground"
+                          "slashed-zero tabular-nums",
+                          s.runCount === 0
+                            ? "text-sm text-muted-foreground/40"
+                            : "text-[0.9375rem] font-bold text-foreground"
                         )}>
                           {s.runCount === 0 ? "—" : s.runCount}
                         </span>
@@ -618,12 +622,12 @@ export default function SchedulesPage() {
               // Build a dot-separated meta strip: target · cadence · window · next run
               // This reads as a single sentence at any width and wraps naturally.
               const metaParts: React.ReactNode[] = [
-                <span key="target" className="tabular-nums">{targetLabel(s)}</span>,
-                <span key="cron">{cronToHuman(s.recurrenceRule)}</span>,
+                <span key="target" className="slashed-zero tabular-nums">{targetLabel(s)}</span>,
+                <span key="cron" className="font-medium text-foreground/90">{cronToHuman(s.recurrenceRule)}</span>,
               ];
               if (s.analysisStartTime && s.analysisEndTime) {
                 metaParts.push(
-                  <span key="window" className="tabular-nums">
+                  <span key="window" className="slashed-zero tabular-nums">
                     {s.analysisStartTime}–{s.analysisEndTime}
                   </span>
                 );
@@ -644,23 +648,23 @@ export default function SchedulesPage() {
                 >
                   {/* Header row: title + status + actions — everything inline */}
                   <div className="flex items-center gap-3">
-                    <p className="min-w-0 flex-1 truncate text-[0.9375rem] font-semibold tracking-tight text-foreground">
+                    <p className="min-w-0 flex-1 truncate text-[0.9375rem] font-bold tracking-[-0.015em] leading-[1.3] text-foreground">
                       {s.templateName}
                     </p>
 
                     {/* Status badge */}
                     {isPaused ? (
-                      <BadgeVariant variant="amber" className="shrink-0 text-xs">
+                      <BadgeVariant variant="amber" className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.06em]">
                         <span className="h-1.5 w-1.5 rounded-full bg-amber-400" aria-hidden />
                         Paused
                       </BadgeVariant>
                     ) : s.enabled ? (
-                      <BadgeVariant variant="emerald" className="shrink-0 text-xs">
+                      <BadgeVariant variant="emerald" className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.06em]">
                         <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden />
                         Active
                       </BadgeVariant>
                     ) : (
-                      <BadgeVariant variant="slate" className="shrink-0 text-xs">
+                      <BadgeVariant variant="slate" className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.06em]">
                         <span className="h-1.5 w-1.5 rounded-full bg-slate-500" aria-hidden />
                         Disabled
                       </BadgeVariant>
@@ -716,29 +720,45 @@ export default function SchedulesPage() {
                   </div>
 
                   {/* Meta strip: bullet-separated, wraps naturally on phone widths.
-                      Primary "Next run" is pulled right so it's always findable. */}
-                  <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                      "Next" uses a micro-caps label so the value reads as
+                      distinct from the rest of the metadata. */}
+                  <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-5 text-muted-foreground">
                     {metaParts.map((part, i) => (
                       <React.Fragment key={i}>
-                        {i > 0 && <span className="text-muted-foreground/40" aria-hidden>·</span>}
+                        {i > 0 && <span className="text-muted-foreground/30" aria-hidden>·</span>}
                         {part}
                       </React.Fragment>
                     ))}
-                    <span className="text-muted-foreground/40" aria-hidden>·</span>
+                    <span className="text-muted-foreground/30" aria-hidden>·</span>
                     <span
                       className={cn(
-                        "inline-flex items-center gap-1 tabular-nums",
-                        imminent && "font-semibold text-emerald-400"
+                        "inline-flex items-center gap-1.5",
+                        imminent && "text-emerald-400"
                       )}
                     >
                       {imminent && (
                         <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" aria-hidden />
                       )}
-                      Next: {formatRelative(s.nextRunAt, now)}
+                      <span
+                        className={cn(
+                          "text-[10px] font-semibold uppercase tracking-[0.08em]",
+                          imminent ? "text-emerald-400/70" : "text-muted-foreground/60"
+                        )}
+                      >
+                        Next
+                      </span>
+                      <span
+                        className={cn(
+                          "slashed-zero tabular-nums",
+                          imminent ? "font-bold" : "font-medium text-foreground/80"
+                        )}
+                      >
+                        {formatRelative(s.nextRunAt, now)}
+                      </span>
                     </span>
                     {isPaused && s.pauseReason && (
                       <>
-                        <span className="text-muted-foreground/40" aria-hidden>·</span>
+                        <span className="text-muted-foreground/30" aria-hidden>·</span>
                         <span className="italic">{s.pauseReason}</span>
                       </>
                     )}
