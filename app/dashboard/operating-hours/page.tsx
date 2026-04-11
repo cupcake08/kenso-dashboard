@@ -304,7 +304,7 @@ export default function OperatingHoursPage() {
 
   // ── Data loading ─────────────────────────────────────────────────────────────
 
-  async function loadData() {
+  useEffect(() => {
     if (IS_DEMO) {
       setShops(buildShops(DEMO_DEVICES, DEMO_SCHEDULES));
       setLoading(false);
@@ -312,9 +312,11 @@ export default function OperatingHoursPage() {
     }
 
     let unsub: (() => void) | undefined;
+    let cancelled = false;
+
     import("firebase/auth").then(({ onAuthStateChanged }) => {
       import("@/lib/firebase").then(({ auth }) => {
-        if (!auth) { setLoading(false); return; }
+        if (!auth || cancelled) { setLoading(false); return; }
         unsub = onAuthStateChanged(auth, async (user) => {
           if (!user) { setLoading(false); return; }
           try {
@@ -322,21 +324,45 @@ export default function OperatingHoursPage() {
               apiFetch<RawDevice[]>("/devices"),
               listOperatingHours(),
             ]);
+            if (cancelled) return;
             const devices = rawDevices.map(normalizeDevice);
             setShops(buildShops(devices, schedules));
             setError("");
           } catch (e: unknown) {
-            setError(e instanceof Error ? e.message : "Failed to load data");
+            if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load data");
           } finally {
-            setLoading(false);
+            if (!cancelled) setLoading(false);
           }
         });
       });
     });
-    return () => unsub?.();
-  }
 
-  useEffect(() => { loadData(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => {
+      cancelled = true;
+      unsub?.();
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function loadData() {
+    if (IS_DEMO) {
+      setShops(buildShops(DEMO_DEVICES, DEMO_SCHEDULES));
+      setLoading(false);
+      return;
+    }
+    try {
+      const [rawDevices, schedules] = await Promise.all([
+        apiFetch<RawDevice[]>("/devices"),
+        listOperatingHours(),
+      ]);
+      const devices = rawDevices.map(normalizeDevice);
+      setShops(buildShops(devices, schedules));
+      setError("");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to load data");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   // ── Mutations ─────────────────────────────────────────────────────────────────
 
