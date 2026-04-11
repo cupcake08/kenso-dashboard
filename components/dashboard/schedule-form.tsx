@@ -66,6 +66,50 @@ function buildCron(days: number[], hour: number, minute: number): string {
   return `${minute} ${hour} * * ${dayStr}`;
 }
 
+// Convert a wall-clock datetime in a specific IANA timezone to a unix timestamp.
+// Uses Intl.DateTimeFormat to determine the offset at that moment (handles DST).
+function zonedWallTimeToUnix(year: number, month: number, day: number, hour: number, minute: number, tz: string): number {
+  // Treat wall-clock as UTC first
+  const utcGuess = Date.UTC(year, month - 1, day, hour, minute, 0);
+  // Read what that UTC moment looks like in the target timezone
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    hour12: false,
+  });
+  const parts = fmt.formatToParts(new Date(utcGuess));
+  const get = (t: string) => parseInt(parts.find((p) => p.type === t)?.value ?? "0");
+  const tzWall = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour") % 24, get("minute"), get("second"));
+  const offsetMs = tzWall - utcGuess;
+  return Math.floor((utcGuess - offsetMs) / 1000);
+}
+
+// Get YYYY-MM-DD for "today" in the given timezone, then subtract one day.
+function yesterdayInTimezone(tz: string): { year: number; month: number; day: number } {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric", month: "2-digit", day: "2-digit",
+  });
+  const todayStr = fmt.format(new Date()); // "2026-04-11"
+  const [y, m, d] = todayStr.split("-").map(Number);
+  const yest = new Date(Date.UTC(y, m - 1, d));
+  yest.setUTCDate(yest.getUTCDate() - 1);
+  return {
+    year: yest.getUTCFullYear(),
+    month: yest.getUTCMonth() + 1,
+    day: yest.getUTCDate(),
+  };
+}
+
+// Fallback theoretical estimate when no audio exists for yesterday.
+// Assumes ~50% voice activity during the window (realistic for retail).
+const VOICE_ACTIVITY_RATIO = 0.5;
+function theoreticalEstimate(windowMinutes: number, deviceCount: number, complexityMultiplier: number): number {
+  const credits = Math.ceil(windowMinutes * deviceCount * complexityMultiplier * VOICE_ACTIVITY_RATIO);
+  return Math.max(1, credits);
+}
+
 export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps) {
   const isEdit = !!initial;
 
@@ -90,6 +134,7 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
   const [dataLoading, setDataLoading] = useState(true);
 
   const [estimate, setEstimate] = useState<EstimateResult | null>(null);
+  const [estimateSource, setEstimateSource] = useState<"historical" | "theoretical" | null>(null);
   const [estimating, setEstimating] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
@@ -116,31 +161,43 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
   const effectiveMicIds = useCallback((): string[] => selectedMicIds, [selectedMicIds]);
 
   // Credit estimate (debounced)
+  // Strategy: query YESTERDAY's same analysis window in the target timezone.
+  // If yesterday had audio, show "~N credits per run — based on yesterday's audio".
+  // If not, fall back to a theoretical estimate assuming 50% voice activity.
   useEffect(() => {
     let cancelled = false;
     const mics = effectiveMicIds();
     if (!templateId || mics.length === 0 || !analysisStart || !analysisEnd) {
       setEstimate(null);
+      setEstimateSource(null);
       return;
     }
 
-    const today = new Date();
     const [sh, sm] = analysisStart.split(":").map(Number);
     const [eh, em] = analysisEnd.split(":").map(Number);
-    const startTs = new Date(today.getFullYear(), today.getMonth(), today.getDate(), sh, sm, 0);
-    const endTs = new Date(today.getFullYear(), today.getMonth(), today.getDate(), eh, em, 0);
-    if (endTs <= startTs) { setEstimate(null); return; }
+    if (isNaN(sh) || isNaN(eh)) { setEstimate(null); setEstimateSource(null); return; }
+
+    // Compute yesterday's analysis window in the selected timezone
+    const { year, month, day } = yesterdayInTimezone(timezone);
+    const startUnix = zonedWallTimeToUnix(year, month, day, sh, sm, timezone);
+    const endUnix = zonedWallTimeToUnix(year, month, day, eh, em, timezone);
+    if (endUnix <= startUnix) { setEstimate(null); setEstimateSource(null); return; }
+
+    const windowMinutes = (endUnix - startUnix) / 60;
+    const tmpl = templates.find((t) => t.templateId === templateId);
+    const multiplier = tmpl?.complexityMultiplier ?? 1;
 
     if (IS_DEMO) {
-      const durMin = (endTs.getTime() - startTs.getTime()) / 60000;
-      const tmpl = templates.find((t) => t.templateId === templateId);
       if (!cancelled) {
+        // Demo uses the theoretical formula consistently
+        const credits = theoreticalEstimate(windowMinutes, mics.length, multiplier);
         setEstimate({
-          estimatedCredits: Math.round(durMin * mics.length * (tmpl?.complexityMultiplier ?? 1) * 0.5),
-          estimatedDurationMin: durMin,
-          totalAudioDurationMs: durMin * 60000,
+          estimatedCredits: credits,
+          estimatedDurationMin: windowMinutes * VOICE_ACTIVITY_RATIO,
+          totalAudioDurationMs: windowMinutes * VOICE_ACTIVITY_RATIO * 60000,
           hasAudio: true,
         });
+        setEstimateSource("theoretical");
       }
       return () => { cancelled = true; };
     }
@@ -153,19 +210,33 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
           template_id: templateId,
           mic_ids: mics,
           shop_ids: [],
-          time_range_start_unix: Math.floor(startTs.getTime() / 1000),
-          time_range_end_unix: Math.floor(endTs.getTime() / 1000),
+          time_range_start_unix: startUnix,
+          time_range_end_unix: endUnix,
         });
-        if (!cancelled) setEstimate(result);
+        if (cancelled) return;
+        if (result.hasAudio && result.estimatedCredits > 0) {
+          setEstimate(result);
+          setEstimateSource("historical");
+        } else {
+          // No audio yesterday — fall back to theoretical
+          const credits = theoreticalEstimate(windowMinutes, mics.length, multiplier);
+          setEstimate({
+            estimatedCredits: credits,
+            estimatedDurationMin: windowMinutes * VOICE_ACTIVITY_RATIO,
+            totalAudioDurationMs: windowMinutes * VOICE_ACTIVITY_RATIO * 60000,
+            hasAudio: false,
+          });
+          setEstimateSource("theoretical");
+        }
       } catch {
-        if (!cancelled) setEstimate(null);
+        if (!cancelled) { setEstimate(null); setEstimateSource(null); }
       } finally {
         if (!cancelled) setEstimating(false);
       }
     }, 600);
 
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [templateId, analysisStart, analysisEnd, effectiveMicIds, templates]);
+  }, [templateId, analysisStart, analysisEnd, effectiveMicIds, templates, timezone]);
 
   function toggleDay(day: number) {
     setSelectedDays((prev) => prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]);
@@ -477,8 +548,15 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
           ) : estimate ? (
             <>
               <Zap className="h-3.5 w-3.5 text-primary shrink-0" />
-              <span className="text-foreground font-semibold tabular-nums">~{estimate.estimatedCredits} credits</span>
-              <span className="text-muted-foreground tabular-nums">· {estimate.estimatedDurationMin.toFixed(0)}m audio</span>
+              <span className="text-foreground font-semibold tabular-nums">~{estimate.estimatedCredits} credits per run</span>
+              <span
+                className="text-muted-foreground"
+                title={estimateSource === "historical"
+                  ? `Based on yesterday's actual audio (${estimate.estimatedDurationMin.toFixed(0)} min)`
+                  : "Estimate assumes ~50% voice activity during the window. Actual cost will depend on real audio captured."}
+              >
+                · {estimateSource === "historical" ? "based on yesterday" : "typical-day estimate"}
+              </span>
             </>
           ) : submitError ? (
             <span className="text-status-offline font-medium" role="alert">{submitError}</span>
