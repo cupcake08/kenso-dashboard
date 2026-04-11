@@ -65,8 +65,45 @@ export function parseCron(cron: string): { days: number[]; hour: number; minute:
 }
 
 /**
- * Convert a 5-part cron expression to a human-readable string.
+ * Convert the day-of-week field of a cron expression to a human-readable
+ * cadence label, without any time-of-day information. Use this in places
+ * where the trigger time is already implied by the analysis window — for
+ * example, the schedules list shows "Mon–Fri · 09:00–18:00" instead of
+ * the redundant "Mon–Fri at 6:00 PM · 09:00–18:00".
+ *
+ * e.g. "0 18 * * 1-5" → "Mon–Fri"
+ *      "0 9 * * *"    → "Daily"
+ *      "0 0 * * 0,6"  → "Sat, Sun"
+ */
+export function cronToDaysLabel(cron: string): string {
+  const parts = cron.split(" ");
+  if (parts.length !== 5) return cron;
+  const days = expandCronDays(parts[4]);
+
+  if (days.length === 7) return "Daily";
+  if (days.length === 0) return "No days";
+
+  // Check if days form a consecutive range (e.g. 1,2,3,4,5 → Mon–Fri)
+  let isConsecutive = true;
+  for (let i = 1; i < days.length; i++) {
+    if (days[i] !== days[i - 1] + 1) {
+      isConsecutive = false;
+      break;
+    }
+  }
+  if (isConsecutive && days.length > 2) {
+    return `${DAY_NAMES[days[0]]}\u2013${DAY_NAMES[days[days.length - 1]]}`;
+  }
+  return days.map((d) => DAY_NAMES[d]).join(", ");
+}
+
+/**
+ * Convert a 5-part cron expression to a human-readable string with time.
  * e.g. "0 9 * * 1-5" → "Mon–Fri at 9:00 AM"
+ *
+ * Prefer {@link cronToDaysLabel} in list views where the analysis window is
+ * shown separately — the trigger time is always the end of the window and
+ * printing both is redundant.
  */
 export function cronToHuman(cron: string): string {
   const parts = cron.split(" ");

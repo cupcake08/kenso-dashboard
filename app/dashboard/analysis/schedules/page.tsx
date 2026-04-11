@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 import { toast } from "sonner";
 import { listSchedules, pauseSchedule, resumeSchedule, createSchedule, apiFetch } from "@/lib/api";
-import { cronToHuman } from "@/lib/cron";
+import { cronToDaysLabel } from "@/lib/cron";
 import type { AnalysisSchedule } from "@/types/analysis";
 import { BadgeVariant } from "@/components/ui/badge-variant";
 import { Button } from "@/components/ui/button";
@@ -454,7 +454,7 @@ export default function SchedulesPage() {
                       </td>
                       <td className="px-4 py-4">
                         <p className="text-sm font-medium text-foreground leading-[1.3]">
-                          {cronToHuman(s.recurrenceRule)}
+                          {cronToDaysLabel(s.recurrenceRule)}
                         </p>
                         {s.analysisStartTime && s.analysisEndTime && (
                           <p className="mt-1 text-[11px] slashed-zero tabular-nums text-muted-foreground/70">
@@ -619,11 +619,13 @@ export default function SchedulesPage() {
               const showPausePicker = pauseState?.scheduleId === s.scheduleId;
               const imminent = !isPaused && s.enabled && isImminent(s.nextRunAt, now);
 
-              // Build a dot-separated meta strip: target · cadence · window · next run
-              // This reads as a single sentence at any width and wraps naturally.
+              // Build a dot-separated meta strip: target · cadence · window · next run.
+              // Use `cronToDaysLabel` (days only) not `cronToHuman` (days + time) —
+              // the trigger time is the end of the analysis window by design, so
+              // printing it here would duplicate the window's end hour.
               const metaParts: React.ReactNode[] = [
                 <span key="target" className="slashed-zero tabular-nums">{targetLabel(s)}</span>,
-                <span key="cron" className="font-medium text-foreground/90">{cronToHuman(s.recurrenceRule)}</span>,
+                <span key="cron" className="font-medium text-foreground/90">{cronToDaysLabel(s.recurrenceRule)}</span>,
               ];
               if (s.analysisStartTime && s.analysisEndTime) {
                 metaParts.push(
