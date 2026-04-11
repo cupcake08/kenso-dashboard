@@ -175,12 +175,34 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
 
     const [sh, sm] = analysisStart.split(":").map(Number);
     const [eh, em] = analysisEnd.split(":").map(Number);
-    if (isNaN(sh) || isNaN(eh)) { setEstimate(null); setEstimateSource(null); return; }
+    if (isNaN(sh) || isNaN(em) || isNaN(eh) || isNaN(sm)) {
+      setEstimate(null); setEstimateSource(null); return;
+    }
 
-    // Compute yesterday's analysis window in the selected timezone
+    // Compute the most recent past run of this window in the selected tz.
+    // Same-day window (09:00–18:00): yesterday 09:00 → yesterday 18:00.
+    // Overnight window (22:00–06:00): the previous completed overnight,
+    //   which is (day-before-yesterday) 22:00 → yesterday 06:00.
     const { year, month, day } = yesterdayInTimezone(timezone);
-    const startUnix = zonedWallTimeToUnix(year, month, day, sh, sm, timezone);
-    const endUnix = zonedWallTimeToUnix(year, month, day, eh, em, timezone);
+    const startMinutes = sh * 60 + sm;
+    const endMinutes = eh * 60 + em;
+    const isOvernight = endMinutes <= startMinutes;
+
+    let startUnix: number;
+    let endUnix: number;
+    if (isOvernight) {
+      // yesterday ends with the morning of 'day'; start is 'day-1' wall-clock.
+      const prev = new Date(Date.UTC(year, month - 1, day));
+      prev.setUTCDate(prev.getUTCDate() - 1);
+      startUnix = zonedWallTimeToUnix(
+        prev.getUTCFullYear(), prev.getUTCMonth() + 1, prev.getUTCDate(),
+        sh, sm, timezone
+      );
+      endUnix = zonedWallTimeToUnix(year, month, day, eh, em, timezone);
+    } else {
+      startUnix = zonedWallTimeToUnix(year, month, day, sh, sm, timezone);
+      endUnix = zonedWallTimeToUnix(year, month, day, eh, em, timezone);
+    }
     if (endUnix <= startUnix) { setEstimate(null); setEstimateSource(null); return; }
 
     const windowMinutes = (endUnix - startUnix) / 60;
@@ -257,12 +279,15 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
   function buildPayload(): CreateSchedulePayload | null {
     if (!templateId || selectedMicIds.length === 0) return null;
     if (!analysisStart || !analysisEnd) return null;
+    // Reject zero-length windows (backend rejects these too; fail fast in UI).
+    if (analysisStart === analysisEnd) return null;
 
     // Trigger time is derived from the end of the analysis window:
     // the job fires once the window has closed, so it can process
     // the whole day's audio for [analysisStart, analysisEnd].
     const [endH, endM] = analysisEnd.split(":").map(Number);
-    if (isNaN(endH) || isNaN(endM)) return null;
+    const [startH, startM] = analysisStart.split(":").map(Number);
+    if (isNaN(endH) || isNaN(endM) || isNaN(startH) || isNaN(startM)) return null;
 
     let recurrenceRule = "";
     let nextRunUnix = 0;
@@ -271,22 +296,30 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
       if (selectedDays.length === 0) return null;
       recurrenceRule = buildCron(selectedDays, endH, endM);
       // For recurring schedules the server computes NextRunAt from the cron
-      // rule + timezone — we just send 0 as a placeholder and let the backend
+      // rule + timezone — we send 0 as a placeholder and let the backend
       // pick the correct next occurrence. Previously this sent Date.now(),
       // which caused the engine to fire the job immediately on creation
-      // regardless of the Mon-Fri filter (server log: Sat morning job).
+      // regardless of the Mon-Fri filter.
       nextRunUnix = 0;
     } else {
       if (!oneTimeDate) return null;
       recurrenceRule = `once:${oneTimeDate}T${analysisEnd}`;
-      const dt = new Date(`${oneTimeDate}T${analysisEnd}:00`);
-      nextRunUnix = Math.floor(dt.getTime() / 1000);
+      // Parse the picked local date in the SCHEDULE's timezone, not the
+      // browser's. `new Date("YYYY-MM-DDTHH:MM:00")` parses as browser-local,
+      // which is wrong whenever the ops manager is in a different tz than
+      // the store (e.g., manager in NYC configuring a store in Kolkata).
+      const [y, mo, d] = oneTimeDate.split("-").map(Number);
+      nextRunUnix = zonedWallTimeToUnix(y, mo, d, endH, endM, timezone);
     }
 
-    let analysisWindowHours = 8;
-    const [startH] = analysisStart.split(":").map(Number);
-    const hours = endH - startH;
-    if (hours > 0) analysisWindowHours = Math.ceil(hours);
+    // Compute window duration in hours. For overnight windows (e.g.,
+    // 22:00 → 06:00), the duration wraps past midnight, so add 24h.
+    const startMinutes = startH * 60 + startM;
+    const endMinutes = endH * 60 + endM;
+    const minutesDelta = endMinutes > startMinutes
+      ? endMinutes - startMinutes
+      : (24 * 60) - startMinutes + endMinutes;
+    const analysisWindowHours = Math.max(1, Math.ceil(minutesDelta / 60));
 
     return {
       template_id: templateId,
