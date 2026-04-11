@@ -105,5 +105,5 @@ export function useListenLive(deviceId: string, shopId: string) {
     }
   }, [state, connect, disconnect]);
 
-  return { audioRef, state, audioLevel, frequencyDataRef, volume, setVolume, connect, disconnect, toggle };
+  return { audioRef, state, audioLevel, frequencyDataRef, volume, setVolume, connect, disconnect, toggle, clientRef };
 }

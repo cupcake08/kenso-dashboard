@@ -244,6 +244,19 @@ export class ListenClient {
     this.sendWS({ type: "listen_client_close", reason });
   }
 
+  /**
+   * Install (or clear) the idle-prompt callbacks after construction. Lets a
+   * consumer hook subscribe to the live listen idle timeout protocol without
+   * owning the ListenClient's constructor.
+   */
+  setIdleCallbacks(
+    onIdlePrompt: ((deadlineUnixMs: number) => void) | undefined,
+    onIdleClose: ((reason: "idle_timeout") => void) | undefined,
+  ): void {
+    this.opts.onIdlePrompt = onIdlePrompt;
+    this.opts.onIdleClose = onIdleClose;
+  }
+
   disconnect(): void {
     if (this.disposed) return;
     // Telemetry: tell the server this was an intentional user stop, not a
