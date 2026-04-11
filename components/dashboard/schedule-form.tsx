@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Loader2, Check, Cpu, Zap, ChevronDown } from "lucide-react";
+import { Loader2, Check, Zap, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { listTemplates, estimateCredits, apiFetch, normalizeDevice } from "@/lib/api";
@@ -27,25 +27,18 @@ const DEMO_TEMPLATES: AnalysisTemplate[] = [
 ];
 
 const TIMEZONES = [
-  "Asia/Kolkata",
-  "Asia/Dubai",
-  "Asia/Singapore",
-  "Asia/Tokyo",
-  "Europe/London",
-  "Europe/Paris",
-  "America/New_York",
-  "America/Los_Angeles",
-  "UTC",
+  "Asia/Kolkata", "Asia/Dubai", "Asia/Singapore", "Asia/Tokyo",
+  "Europe/London", "Europe/Paris", "America/New_York", "America/Los_Angeles", "UTC",
 ];
 
 const DAYS = [
-  { label: "Mon", value: 1 },
-  { label: "Tue", value: 2 },
-  { label: "Wed", value: 3 },
-  { label: "Thu", value: 4 },
-  { label: "Fri", value: 5 },
-  { label: "Sat", value: 6 },
-  { label: "Sun", value: 0 },
+  { label: "M", value: 1 },
+  { label: "T", value: 2 },
+  { label: "W", value: 3 },
+  { label: "T", value: 4 },
+  { label: "F", value: 5 },
+  { label: "S", value: 6 },
+  { label: "S", value: 0 },
 ];
 
 export interface CreateSchedulePayload {
@@ -69,108 +62,64 @@ interface ScheduleFormProps {
 }
 
 function buildCron(days: number[], hour: number, minute: number): string {
-  const dayStr = days.sort().join(",");
+  const dayStr = [...days].sort((a, b) => a - b).join(",");
   return `${minute} ${hour} * * ${dayStr}`;
-}
-
-// parseCron is imported from @/lib/cron
-
-// Group devices by shop_id
-function groupByShop(devices: Device[]): Map<string, Device[]> {
-  const map = new Map<string, Device[]>();
-  for (const d of devices) {
-    if (!map.has(d.shop_id)) map.set(d.shop_id, []);
-    map.get(d.shop_id)!.push(d);
-  }
-  return map;
-}
-
-// Get a display name for a shop — fallback to shop_id
-function shopDisplayName(shopId: string, devices: Device[]): string {
-  const device = devices.find((d) => d.shop_id === shopId);
-  if (device?.location) return device.location;
-  return shopId;
 }
 
 export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps) {
   const isEdit = !!initial;
 
-  // Form state
   const [templateId, setTemplateId] = useState(initial?.templateId ?? "");
-  const [targetMode, setTargetMode] = useState<"shop" | "device">(
-    initial?.shopIds && initial.shopIds.length > 0 ? "shop" : "device"
-  );
-  const [selectedShopIds, setSelectedShopIds] = useState<string[]>(initial?.shopIds ?? []);
   const [selectedMicIds, setSelectedMicIds] = useState<string[]>(initial?.micIds ?? []);
   const [scheduleType, setScheduleType] = useState<"recurring" | "one_time">(initial?.scheduleType ?? "recurring");
 
-  // Parse initial cron
   const initialCron = initial?.recurrenceRule ? parseCron(initial.recurrenceRule) : { days: [1, 2, 3, 4, 5], hour: 9, minute: 0 };
   const [selectedDays, setSelectedDays] = useState<number[]>(initialCron.days);
-  const [triggerHour, setTriggerHour] = useState(initialCron.hour);
-  const [triggerMinute, setTriggerMinute] = useState(initialCron.minute);
+  const [triggerTime, setTriggerTime] = useState(
+    `${String(initialCron.hour).padStart(2, "0")}:${String(initialCron.minute).padStart(2, "0")}`
+  );
 
-  // One-time
   const [oneTimeDate, setOneTimeDate] = useState("");
   const [oneTimeTime, setOneTimeTime] = useState("09:00");
 
-  // Analysis window
   const [analysisStart, setAnalysisStart] = useState(initial?.analysisStartTime ?? "09:00");
   const [analysisEnd, setAnalysisEnd] = useState(initial?.analysisEndTime ?? "18:00");
-
-  // Timezone
   const [timezone, setTimezone] = useState(initial?.timezone ?? "Asia/Kolkata");
 
-  // Notes
+  const [showNotes, setShowNotes] = useState(!!initial?.freeTextNotes);
   const [notes, setNotes] = useState(initial?.freeTextNotes ?? "");
 
-  // Data
   const [templates, setTemplates] = useState<AnalysisTemplate[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
-  const [templatesLoading, setTemplatesLoading] = useState(true);
-  const [devicesLoading, setDevicesLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(true);
 
-  // Credit estimate
   const [estimate, setEstimate] = useState<EstimateResult | null>(null);
   const [estimating, setEstimating] = useState(false);
 
-  // Submit
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
 
-  // Load templates
+  // Load templates + devices in parallel
   useEffect(() => {
     if (IS_DEMO) {
       setTemplates(DEMO_TEMPLATES);
-      setTemplatesLoading(false);
-      return;
-    }
-    listTemplates()
-      .then(setTemplates)
-      .catch(() => {})
-      .finally(() => setTemplatesLoading(false));
-  }, []);
-
-  // Load devices
-  useEffect(() => {
-    if (IS_DEMO) {
       setDevices(DEMO_DEVICES);
-      setDevicesLoading(false);
+      setDataLoading(false);
       return;
     }
-    apiFetch<RawDevice[]>("/devices")
-      .then((raw) => setDevices((raw ?? []).map(normalizeDevice)))
-      .catch(() => {})
-      .finally(() => setDevicesLoading(false));
+    Promise.all([
+      listTemplates().catch(() => []),
+      apiFetch<RawDevice[]>("/devices").then((raw) => (raw ?? []).map(normalizeDevice)).catch(() => []),
+    ]).then(([tmpls, devs]) => {
+      setTemplates(tmpls);
+      setDevices(devs);
+      setDataLoading(false);
+    });
   }, []);
 
-  // Compute effective mic_ids for estimation
-  const effectiveMicIds = useCallback((): string[] => {
-    if (targetMode === "device") return selectedMicIds;
-    return devices.filter((d) => selectedShopIds.includes(d.shop_id)).map((d) => d.device_id);
-  }, [targetMode, selectedMicIds, selectedShopIds, devices]);
+  const effectiveMicIds = useCallback((): string[] => selectedMicIds, [selectedMicIds]);
 
-  // Run credit estimate when key fields are set
+  // Credit estimate (debounced)
   useEffect(() => {
     let cancelled = false;
     const mics = effectiveMicIds();
@@ -207,7 +156,7 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
         const result = await estimateCredits({
           template_id: templateId,
           mic_ids: mics,
-          shop_ids: targetMode === "shop" ? selectedShopIds : [],
+          shop_ids: [],
           time_range_start_unix: Math.floor(startTs.getTime() / 1000),
           time_range_end_unix: Math.floor(endTs.getTime() / 1000),
         });
@@ -219,47 +168,37 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
       }
     }, 600);
 
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [templateId, analysisStart, analysisEnd, effectiveMicIds, templates, targetMode, selectedShopIds]);
-
-  const shopGroups = groupByShop(devices);
-  const shopIds = Array.from(shopGroups.keys());
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [templateId, analysisStart, analysisEnd, effectiveMicIds, templates]);
 
   function toggleDay(day: number) {
-    setSelectedDays((prev) =>
-      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]
-    );
-  }
-
-  function toggleShop(shopId: string) {
-    setSelectedShopIds((prev) =>
-      prev.includes(shopId) ? prev.filter((s) => s !== shopId) : [...prev, shopId]
-    );
+    setSelectedDays((prev) => prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]);
   }
 
   function toggleMic(micId: string) {
-    setSelectedMicIds((prev) =>
-      prev.includes(micId) ? prev.filter((m) => m !== micId) : [...prev, micId]
-    );
+    setSelectedMicIds((prev) => prev.includes(micId) ? prev.filter((m) => m !== micId) : [...prev, micId]);
+  }
+
+  function selectAllMics() {
+    setSelectedMicIds(devices.map((d) => d.device_id));
+  }
+
+  function clearMics() {
+    setSelectedMicIds([]);
   }
 
   function buildPayload(): CreateSchedulePayload | null {
-    if (!templateId) return null;
-    const mics = effectiveMicIds();
-    if (mics.length === 0 && selectedShopIds.length === 0) return null;
+    if (!templateId || selectedMicIds.length === 0) return null;
 
     let recurrenceRule = "";
     let nextRunUnix = 0;
 
     if (scheduleType === "recurring") {
       if (selectedDays.length === 0) return null;
-      recurrenceRule = buildCron(selectedDays, triggerHour, triggerMinute);
-      // For recurring schedules, send current time so the backend's own computeNextRun
-      // (which correctly uses the schedule's timezone) will compute the real next_run.
-      // TODO: timezone-aware client computation to send precise next_run_unix
+      const [h, m] = triggerTime.split(":").map(Number);
+      if (isNaN(h) || isNaN(m)) return null;
+      recurrenceRule = buildCron(selectedDays, h, m);
+      // Backend's computeNextRun handles timezone-correct computation on first tick.
       nextRunUnix = Math.floor(Date.now() / 1000);
     } else {
       if (!oneTimeDate || !oneTimeTime) return null;
@@ -268,7 +207,6 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
       nextRunUnix = Math.floor(dt.getTime() / 1000);
     }
 
-    // Compute analysis_window_hours from start/end times
     let analysisWindowHours = 8;
     if (analysisStart && analysisEnd) {
       const [sh] = analysisStart.split(":").map(Number);
@@ -279,8 +217,8 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
 
     return {
       template_id: templateId,
-      mic_ids: targetMode === "device" ? selectedMicIds : mics,
-      shop_ids: targetMode === "shop" ? selectedShopIds : [],
+      mic_ids: selectedMicIds,
+      shop_ids: [],
       schedule_type: scheduleType,
       recurrence_rule: recurrenceRule,
       analysis_window_hours: analysisWindowHours,
@@ -308,116 +246,77 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
 
   const isValid = !!buildPayload();
 
-  const inputClass =
-    "w-full rounded-xl border border-border bg-transparent px-3 py-2.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
-  const labelClass = "text-xs font-medium text-muted-foreground mb-1.5 block";
+  // Shared classes
+  const field = "w-full rounded-md border border-border bg-transparent px-3 h-9 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  const label = "text-xs font-medium text-muted-foreground";
 
   return (
-    <div className="rounded-xl border border-border bg-card/50 p-6 space-y-6">
-      <div>
-        <h3 className="text-base font-semibold text-foreground">
-          {isEdit ? "Edit Schedule" : "New Schedule"}
+    <div className="rounded-lg border border-border bg-card/30">
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-3 border-b border-border/60">
+        <h3 className="text-sm font-semibold text-foreground">
+          {isEdit ? "Edit schedule" : "New schedule"}
         </h3>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          Configure recurring or one-time audio analysis
-        </p>
+        <button
+          onClick={onCancel}
+          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          Cancel
+        </button>
       </div>
 
-      {/* Template Selector */}
-      <div>
-        <label htmlFor="sched-template" className={labelClass}>Template</label>
-        {templatesLoading ? (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Loading templates...
+      <div className="px-5 py-4 space-y-5">
+        {/* Template */}
+        <div>
+          <label htmlFor="sched-template" className={label}>Template</label>
+          <div className="mt-1.5">
+            {isEdit ? (
+              <div className="text-sm text-foreground h-9 flex items-center px-3 rounded-md bg-muted/30 border border-border">
+                {templates.find((t) => t.templateId === templateId)?.name ?? templateId}
+              </div>
+            ) : (
+              <div className="relative">
+                <select
+                  id="sched-template"
+                  className={cn(field, "appearance-none pr-8 cursor-pointer")}
+                  value={templateId}
+                  onChange={(e) => setTemplateId(e.target.value)}
+                  disabled={dataLoading}
+                >
+                  <option value="">{dataLoading ? "Loading…" : "Select a template"}</option>
+                  {templates.map((t) => (
+                    <option key={t.templateId} value={t.templateId}>{t.name}</option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              </div>
+            )}
           </div>
-        ) : isEdit ? (
-          <div>
-            <p className="text-sm text-foreground py-2.5 px-3 rounded-xl border border-border bg-muted/20">
-              {templates.find((t) => t.templateId === templateId)?.name ?? templateId}
-            </p>
-            <p className="text-xs text-muted-foreground mt-1">Template cannot be changed after creation</p>
-          </div>
-        ) : (
-          <div className="relative">
-            <select
-              id="sched-template"
-              className={cn(inputClass, "appearance-none pr-8 cursor-pointer")}
-              value={templateId}
-              onChange={(e) => setTemplateId(e.target.value)}
-            >
-              <option value="">Select a template…</option>
-              {templates.map((t) => (
-                <option key={t.templateId} value={t.templateId}>{t.name}</option>
-              ))}
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          </div>
-        )}
-      </div>
-
-      {/* Target Switcher */}
-      <div>
-        <p className={labelClass}>Target</p>
-        <div className="flex gap-2 mb-4">
-          {(["shop", "device"] as const).map((mode) => (
-            <button
-              key={mode}
-              onClick={() => setTargetMode(mode)}
-              className={cn(
-                "flex-1 rounded-xl border px-3 py-2 text-sm font-medium transition-all",
-                targetMode === mode
-                  ? "border-primary/60 bg-primary/10 text-primary"
-                  : "border-border text-muted-foreground hover:border-muted-foreground/40 hover:text-foreground"
-              )}
-            >
-              {mode === "shop" ? "By location" : "By device"}
-            </button>
-          ))}
         </div>
 
-        {devicesLoading ? (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Loading devices...
-          </div>
-        ) : targetMode === "shop" ? (
-          <div className="space-y-1.5 max-h-44 overflow-y-auto">
-            {shopIds.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No shops found.</p>
-            ) : shopIds.map((shopId) => {
-              const shopDevices = shopGroups.get(shopId) ?? [];
-              const selected = selectedShopIds.includes(shopId);
-              return (
-                <button
-                  key={shopId}
-                  onClick={() => toggleShop(shopId)}
-                  className={cn(
-                    "w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-left transition-colors",
-                    selected ? "bg-primary/5" : "hover:bg-muted/20"
-                  )}
-                >
-                  <div className={cn(
-                    "flex h-5 w-5 items-center justify-center rounded border shrink-0 transition-colors",
-                    selected ? "bg-primary border-primary text-primary-foreground" : "border-muted-foreground/30"
-                  )}>
-                    {selected && <Check className="h-3 w-3" />}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm text-foreground">{shopDisplayName(shopId, devices)}</p>
-                    <p className="text-xs text-muted-foreground">{shopDevices.length} device{shopDevices.length !== 1 ? "s" : ""}</p>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="space-y-1.5 max-h-44 overflow-y-auto">
-            {devices.length === 0 ? (
-              <div className="rounded-xl border border-border bg-muted/20 p-6 text-center">
-                <Cpu className="h-5 w-5 text-muted-foreground/40 mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground">No devices found</p>
+        {/* Devices */}
+        <div>
+          <div className="flex items-center justify-between">
+            <label className={label}>
+              Devices
+              {selectedMicIds.length > 0 && (
+                <span className="ml-1.5 text-foreground/70">· {selectedMicIds.length} selected</span>
+              )}
+            </label>
+            {devices.length > 0 && (
+              <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+                <button onClick={selectAllMics} className="hover:text-foreground transition-colors">All</button>
+                <button onClick={clearMics} className="hover:text-foreground transition-colors">None</button>
               </div>
+            )}
+          </div>
+          <div className="mt-1.5 rounded-md border border-border max-h-40 overflow-y-auto">
+            {dataLoading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground px-3 py-3">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading devices…
+              </div>
+            ) : devices.length === 0 ? (
+              <p className="text-sm text-muted-foreground px-3 py-3">No devices found.</p>
             ) : devices.map((device) => {
               const selected = selectedMicIds.includes(device.device_id);
               return (
@@ -425,227 +324,162 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
                   key={device.device_id}
                   onClick={() => toggleMic(device.device_id)}
                   className={cn(
-                    "w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-left transition-colors",
+                    "w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors border-b border-border/40 last:border-b-0",
                     selected ? "bg-primary/5" : "hover:bg-muted/20"
                   )}
                 >
                   <div className={cn(
-                    "flex h-5 w-5 items-center justify-center rounded border shrink-0 transition-colors",
-                    selected ? "bg-primary border-primary text-primary-foreground" : "border-muted-foreground/30"
+                    "flex h-4 w-4 items-center justify-center rounded border shrink-0",
+                    selected ? "bg-primary border-primary text-primary-foreground" : "border-muted-foreground/40"
                   )}>
                     {selected && <Check className="h-3 w-3" />}
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm text-foreground">{device.label || device.device_id}</p>
-                    <p className="text-xs text-muted-foreground">{shopDisplayName(device.shop_id, devices)}</p>
-                  </div>
+                  <span className="text-sm text-foreground flex-1 truncate">{device.label || device.device_id}</span>
                   <span className={cn(
-                    "h-2 w-2 rounded-full shrink-0",
-                    device.status === "online" || device.status === "streaming" ? "bg-emerald-500"
-                      : device.status === "pending" ? "bg-amber-400"
+                    "h-1.5 w-1.5 rounded-full shrink-0",
+                    device.status === "online" || device.status === "streaming" ? "bg-status-online"
+                      : device.status === "pending" ? "bg-status-pending"
                       : "bg-muted-foreground/30"
                   )} />
                 </button>
               );
             })}
           </div>
-        )}
-      </div>
-
-      {/* Schedule Type Toggle */}
-      <div>
-        <p className={labelClass}>Schedule type</p>
-        <div className="flex gap-2 mb-4">
-          {(["recurring", "one_time"] as const).map((type) => (
-            <button
-              key={type}
-              onClick={() => setScheduleType(type)}
-              className={cn(
-                "flex-1 rounded-xl border px-3 py-2 text-sm font-medium transition-all",
-                scheduleType === type
-                  ? "border-primary/60 bg-primary/10 text-primary"
-                  : "border-border text-muted-foreground hover:border-muted-foreground/40 hover:text-foreground"
-              )}
-            >
-              {type === "recurring" ? "Recurring" : "One-time"}
-            </button>
-          ))}
         </div>
 
-        {scheduleType === "recurring" ? (
-          <div className="space-y-4">
-            {/* Day checkboxes */}
-            <div>
-              <p className={labelClass}>Days</p>
-              <div className="flex flex-wrap gap-2">
-                {DAYS.map((day) => {
+        {/* Schedule: type + days/time */}
+        <div>
+          <label className={label}>Run</label>
+          <div className="mt-1.5 flex gap-1 rounded-md border border-border p-0.5 w-fit">
+            {(["recurring", "one_time"] as const).map((type) => (
+              <button
+                key={type}
+                onClick={() => setScheduleType(type)}
+                className={cn(
+                  "px-3 h-7 rounded text-xs font-medium transition-colors",
+                  scheduleType === type ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {type === "recurring" ? "Recurring" : "One-time"}
+              </button>
+            ))}
+          </div>
+
+          {scheduleType === "recurring" ? (
+            <div className="mt-3 flex flex-wrap items-end gap-3">
+              {/* Day pills */}
+              <div className="flex gap-1">
+                {DAYS.map((day, idx) => {
                   const selected = selectedDays.includes(day.value);
                   return (
                     <button
-                      key={day.value}
+                      key={idx}
                       onClick={() => toggleDay(day.value)}
                       className={cn(
-                        "rounded-lg border px-3 py-1.5 text-sm font-medium transition-all",
+                        "h-9 w-9 rounded-md text-xs font-semibold transition-colors border",
                         selected
-                          ? "border-primary/60 bg-primary/10 text-primary"
-                          : "border-border text-muted-foreground hover:border-muted-foreground/40 hover:text-foreground"
+                          ? "bg-primary/15 border-primary/40 text-primary"
+                          : "border-border text-muted-foreground hover:text-foreground"
                       )}
+                      aria-label={`Toggle day ${day.label}`}
                     >
                       {day.label}
                     </button>
                   );
                 })}
               </div>
-            </div>
-            {/* Trigger time */}
-            <div className="flex gap-3">
-              <div className="flex-1">
-                <label htmlFor="sched-hour" className={labelClass}>Hour (0–23)</label>
+              {/* Time */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">at</span>
                 <input
-                  id="sched-hour"
-                  type="number"
-                  min={0}
-                  max={23}
-                  className={inputClass}
-                  value={triggerHour}
-                  onChange={(e) => setTriggerHour(Math.min(23, Math.max(0, parseInt(e.target.value) || 0)))}
-                />
-              </div>
-              <div className="flex-1">
-                <label htmlFor="sched-minute" className={labelClass}>Minute (0–59)</label>
-                <input
-                  id="sched-minute"
-                  type="number"
-                  min={0}
-                  max={59}
-                  className={inputClass}
-                  value={triggerMinute}
-                  onChange={(e) => setTriggerMinute(Math.min(59, Math.max(0, parseInt(e.target.value) || 0)))}
+                  type="time"
+                  className={cn(field, "w-28")}
+                  value={triggerTime}
+                  onChange={(e) => setTriggerTime(e.target.value)}
                 />
               </div>
             </div>
-          </div>
-        ) : (
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <label htmlFor="sched-date" className={labelClass}>Date</label>
-              <input
-                id="sched-date"
-                type="date"
-                className={inputClass}
-                value={oneTimeDate}
-                onChange={(e) => setOneTimeDate(e.target.value)}
-              />
-            </div>
-            <div className="flex-1">
-              <label htmlFor="sched-time" className={labelClass}>Time</label>
-              <input
-                id="sched-time"
-                type="time"
-                className={inputClass}
-                value={oneTimeTime}
-                onChange={(e) => setOneTimeTime(e.target.value)}
-              />
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Analysis Window */}
-      <div>
-        <p className={labelClass}>Analysis window</p>
-        <div className="flex gap-3">
-          <div className="flex-1">
-            <label htmlFor="sched-astart" className="text-xs text-muted-foreground mb-1.5 block">Start time</label>
-            <input
-              id="sched-astart"
-              type="time"
-              className={inputClass}
-              value={analysisStart}
-              onChange={(e) => setAnalysisStart(e.target.value)}
-            />
-          </div>
-          <div className="flex-1">
-            <label htmlFor="sched-aend" className="text-xs text-muted-foreground mb-1.5 block">End time</label>
-            <input
-              id="sched-aend"
-              type="time"
-              className={inputClass}
-              value={analysisEnd}
-              onChange={(e) => setAnalysisEnd(e.target.value)}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Timezone */}
-      <div>
-        <label htmlFor="sched-tz" className={labelClass}>Timezone</label>
-        <div className="relative">
-          <select
-            id="sched-tz"
-            className={cn(inputClass, "appearance-none pr-8 cursor-pointer")}
-            value={timezone}
-            onChange={(e) => setTimezone(e.target.value)}
-          >
-            {TIMEZONES.map((tz) => (
-              <option key={tz} value={tz}>{tz}</option>
-            ))}
-          </select>
-          <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        </div>
-      </div>
-
-      {/* Notes */}
-      <div>
-        <label htmlFor="sched-notes" className={labelClass}>Notes (optional)</label>
-        <textarea
-          id="sched-notes"
-          className="w-full h-20 rounded-xl border border-border bg-transparent px-3 py-2.5 text-sm text-foreground resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          placeholder="e.g. Focus on shift handover periods"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-        />
-      </div>
-
-      {/* Credit estimate */}
-      {(estimate || estimating) && (
-        <div className={cn(
-          "rounded-xl border p-4 flex items-center gap-3",
-          estimate ? "border-primary/30 bg-primary/5" : "border-border bg-muted/20"
-        )}>
-          {estimating ? (
-            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" />
           ) : (
-            <Zap className="h-4 w-4 text-primary shrink-0" />
+            <div className="mt-3 flex gap-3">
+              <input type="date" className={cn(field, "flex-1")} value={oneTimeDate} onChange={(e) => setOneTimeDate(e.target.value)} />
+              <input type="time" className={cn(field, "w-28")} value={oneTimeTime} onChange={(e) => setOneTimeTime(e.target.value)} />
+            </div>
           )}
-          <div className="min-w-0 flex-1">
-            <p className="text-xs text-muted-foreground">Estimated cost per run</p>
-            {estimate && !estimating && (
-              <p className="text-sm font-semibold text-primary">
-                ~{estimate.estimatedCredits} credits
-                <span className="text-xs font-normal text-muted-foreground ml-2">
-                  ({estimate.estimatedDurationMin.toFixed(0)} min audio)
-                </span>
-              </p>
-            )}
-            {estimating && <p className="text-xs text-muted-foreground">Calculating…</p>}
+        </div>
+
+        {/* Analysis window + timezone on one row */}
+        <div className="grid grid-cols-[1fr_1fr_1.5fr] gap-3">
+          <div>
+            <label htmlFor="sched-astart" className={label}>Analyze from</label>
+            <input id="sched-astart" type="time" className={cn(field, "mt-1.5")} value={analysisStart} onChange={(e) => setAnalysisStart(e.target.value)} />
+          </div>
+          <div>
+            <label htmlFor="sched-aend" className={label}>to</label>
+            <input id="sched-aend" type="time" className={cn(field, "mt-1.5")} value={analysisEnd} onChange={(e) => setAnalysisEnd(e.target.value)} />
+          </div>
+          <div>
+            <label htmlFor="sched-tz" className={label}>Timezone</label>
+            <div className="relative mt-1.5">
+              <select
+                id="sched-tz"
+                className={cn(field, "appearance-none pr-8 cursor-pointer")}
+                value={timezone}
+                onChange={(e) => setTimezone(e.target.value)}
+              >
+                {TIMEZONES.map((tz) => <option key={tz} value={tz}>{tz}</option>)}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            </div>
           </div>
         </div>
-      )}
 
-      {submitError && (
-        <p className="text-sm text-red-400" role="alert">{submitError}</p>
-      )}
+        {/* Notes — progressive disclosure */}
+        <div>
+          {showNotes ? (
+            <>
+              <label htmlFor="sched-notes" className={label}>Notes</label>
+              <textarea
+                id="sched-notes"
+                className="mt-1.5 w-full h-16 rounded-md border border-border bg-transparent px-3 py-2 text-sm text-foreground resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                placeholder="e.g. Focus on shift handover periods"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+              />
+            </>
+          ) : (
+            <button
+              onClick={() => setShowNotes(true)}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              + Add notes
+            </button>
+          )}
+        </div>
+      </div>
 
-      {/* Actions */}
-      <div className="flex gap-3">
-        <Button variant="outline" className="flex-1" onClick={onCancel} disabled={submitting}>
-          Cancel
-        </Button>
-        <Button className="flex-1" onClick={handleSubmit} disabled={!isValid || submitting}>
-          {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-          {isEdit ? "Update Schedule" : "Create Schedule"}
+      {/* Footer: estimate + actions */}
+      <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-border/60">
+        <div className="flex items-center gap-2 text-xs min-w-0">
+          {estimating ? (
+            <>
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground shrink-0" />
+              <span className="text-muted-foreground">Calculating…</span>
+            </>
+          ) : estimate ? (
+            <>
+              <Zap className="h-3.5 w-3.5 text-primary shrink-0" />
+              <span className="text-foreground font-medium">~{estimate.estimatedCredits} credits</span>
+              <span className="text-muted-foreground">· {estimate.estimatedDurationMin.toFixed(0)}m audio</span>
+            </>
+          ) : submitError ? (
+            <span className="text-status-offline" role="alert">{submitError}</span>
+          ) : (
+            <span className="text-muted-foreground">Select devices to see cost</span>
+          )}
+        </div>
+        <Button size="sm" onClick={handleSubmit} disabled={!isValid || submitting}>
+          {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />}
+          {isEdit ? "Update" : "Create schedule"}
         </Button>
       </div>
     </div>
