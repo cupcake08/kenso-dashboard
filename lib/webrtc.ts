@@ -4,7 +4,7 @@ import { auth } from "./firebase";
 import { apiFetch } from "./api";
 import type { ListenTokenResponse } from "@/types/api";
 
-export type ListenState = "idle" | "connecting" | "connected" | "error";
+export type ListenState = "idle" | "connecting" | "connected" | "reconnecting" | "error";
 
 interface ListenClientOpts {
   deviceId: string;
@@ -17,6 +17,11 @@ interface ListenClientOpts {
   onIdlePrompt?: (deadlineUnixMs: number) => void;
   /** Fired when the server closes the WS with the idle-timeout close code (4408). */
   onIdleClose?: (reason: "idle_timeout") => void;
+  /** Fired when the SFU notifies that the publisher (device) dropped its PC.
+   * The dashboard should tear down its local track/stream and show a
+   * reconnecting indicator — the next offer will arrive once the device
+   * reconnects. */
+  onPublisherDisconnected?: (reason: string) => void;
 }
 
 type ListenClientCloseReason =
@@ -133,7 +138,43 @@ export class ListenClient {
         this.opts.onIdlePrompt?.(msg.deadline_unix_ms);
         break;
       }
+      case "room_event": {
+        // SFU notifies subscribers when the publisher's PC state changes.
+        // publisher_disconnected: device's WebRTC connection failed/dropped.
+        //   Drop our stale PC and surface "reconnecting" — the device will
+        //   create a fresh PC on its next start_stream and the SFU will send
+        //   us a new offer automatically via TriggerRenegotiation.
+        const event = msg.event ?? msg.event_type;
+        if (event === "publisher_disconnected") {
+          const reason = (msg.state as string) || "disconnected";
+          console.log("[Listen] Publisher disconnected (%s), resetting PC for re-offer", reason);
+          this.resetPeerConnection();
+          this.opts.onStateChange("reconnecting");
+          this.opts.onPublisherDisconnected?.(reason);
+        }
+        break;
+      }
     }
+  }
+
+  /** Tear down the RTCPeerConnection + audio graph but KEEP the WebSocket
+   * alive so the SFU can push a new offer once the publisher reconnects. */
+  private resetPeerConnection(): void {
+    if (this.pc) {
+      try { this.pc.close(); } catch { /* ignore */ }
+      this.pc = null;
+    }
+    this.trackReceived = false;
+    if (this.levelInterval) {
+      clearInterval(this.levelInterval);
+      this.levelInterval = null;
+    }
+    if (this.audioCtx) {
+      try { this.audioCtx.close(); } catch { /* ignore */ }
+      this.audioCtx = null;
+    }
+    this.gainNode = null;
+    this.analyser = null;
   }
 
   private async handleOffer(sdp: string): Promise<void> {
