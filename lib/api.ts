@@ -283,8 +283,9 @@ export function normalizeSchedule(raw: RawAnalysisSchedule): AnalysisSchedule {
 }
 
 export async function listTemplates(): Promise<AnalysisTemplate[]> {
-  const raw = await apiFetch<RawAnalysisTemplate[]>("/analysis/templates");
-  return raw.map(normalizeTemplate);
+  // Go nil slices serialize to `null`, not `[]`. Guard before mapping.
+  const raw = await apiFetch<RawAnalysisTemplate[] | null>("/analysis/templates");
+  return (raw ?? []).map(normalizeTemplate);
 }
 
 export async function createJob(body: {
@@ -303,8 +304,8 @@ export async function createJob(body: {
 }
 
 export async function listJobs(limit = 20): Promise<AnalysisJob[]> {
-  const raw = await apiFetch<RawAnalysisJob[]>(`/analysis/jobs?limit=${limit}`);
-  return raw.map(normalizeJob);
+  const raw = await apiFetch<RawAnalysisJob[] | null>(`/analysis/jobs?limit=${limit}`);
+  return (raw ?? []).map(normalizeJob);
 }
 
 export async function getJob(jobId: string): Promise<AnalysisJob> {
@@ -336,8 +337,8 @@ export async function estimateCredits(body: {
 }
 
 export async function listSchedules(): Promise<AnalysisSchedule[]> {
-  const raw = await apiFetch<RawAnalysisSchedule[]>("/analysis/schedules");
-  return raw.map(normalizeSchedule);
+  const raw = await apiFetch<RawAnalysisSchedule[] | null>("/analysis/schedules");
+  return (raw ?? []).map(normalizeSchedule);
 }
 
 export async function generateAPIKey(): Promise<string> {
@@ -369,7 +370,8 @@ export async function disableMic(companyId: string, micId: string): Promise<unkn
 // --- Operating Hours ---
 
 export async function listOperatingHours(): Promise<OperatingSchedule[]> {
-  return apiFetch<OperatingSchedule[]>("/operating-hours");
+  const raw = await apiFetch<OperatingSchedule[] | null>("/operating-hours");
+  return raw ?? [];
 }
 
 export async function getOperatingHours(shopId: string): Promise<OperatingSchedule> {
