@@ -39,6 +39,12 @@ RUN bun run build
 FROM oven/bun:1-alpine AS runner
 ENV NODE_ENV=production
 
+# Explicit WORKDIR: oven/bun:1-alpine's default is /home/bun/app, but the
+# docker-compose.yml tmpfs mounts /app/.next/cache expecting the app to live
+# at /app. Without this, Next.js 16 tries to mkdir /home/bun/app/.next/cache
+# on the read-only filesystem and crashes with EROFS on image-cache writes.
+WORKDIR /app
+
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
