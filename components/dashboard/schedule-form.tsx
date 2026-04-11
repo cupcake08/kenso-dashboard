@@ -73,14 +73,10 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
   const [selectedMicIds, setSelectedMicIds] = useState<string[]>(initial?.micIds ?? []);
   const [scheduleType, setScheduleType] = useState<"recurring" | "one_time">(initial?.scheduleType ?? "recurring");
 
-  const initialCron = initial?.recurrenceRule ? parseCron(initial.recurrenceRule) : { days: [1, 2, 3, 4, 5], hour: 9, minute: 0 };
+  const initialCron = initial?.recurrenceRule ? parseCron(initial.recurrenceRule) : { days: [1, 2, 3, 4, 5], hour: 18, minute: 0 };
   const [selectedDays, setSelectedDays] = useState<number[]>(initialCron.days);
-  const [triggerTime, setTriggerTime] = useState(
-    `${String(initialCron.hour).padStart(2, "0")}:${String(initialCron.minute).padStart(2, "0")}`
-  );
 
   const [oneTimeDate, setOneTimeDate] = useState("");
-  const [oneTimeTime, setOneTimeTime] = useState("09:00");
 
   const [analysisStart, setAnalysisStart] = useState(initial?.analysisStartTime ?? "09:00");
   const [analysisEnd, setAnalysisEnd] = useState(initial?.analysisEndTime ?? "18:00");
@@ -189,31 +185,33 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
 
   function buildPayload(): CreateSchedulePayload | null {
     if (!templateId || selectedMicIds.length === 0) return null;
+    if (!analysisStart || !analysisEnd) return null;
+
+    // Trigger time is derived from the end of the analysis window:
+    // the job fires once the window has closed, so it can process
+    // the whole day's audio for [analysisStart, analysisEnd].
+    const [endH, endM] = analysisEnd.split(":").map(Number);
+    if (isNaN(endH) || isNaN(endM)) return null;
 
     let recurrenceRule = "";
     let nextRunUnix = 0;
 
     if (scheduleType === "recurring") {
       if (selectedDays.length === 0) return null;
-      const [h, m] = triggerTime.split(":").map(Number);
-      if (isNaN(h) || isNaN(m)) return null;
-      recurrenceRule = buildCron(selectedDays, h, m);
+      recurrenceRule = buildCron(selectedDays, endH, endM);
       // Backend's computeNextRun handles timezone-correct computation on first tick.
       nextRunUnix = Math.floor(Date.now() / 1000);
     } else {
-      if (!oneTimeDate || !oneTimeTime) return null;
-      recurrenceRule = `once:${oneTimeDate}T${oneTimeTime}`;
-      const dt = new Date(`${oneTimeDate}T${oneTimeTime}:00`);
+      if (!oneTimeDate) return null;
+      recurrenceRule = `once:${oneTimeDate}T${analysisEnd}`;
+      const dt = new Date(`${oneTimeDate}T${analysisEnd}:00`);
       nextRunUnix = Math.floor(dt.getTime() / 1000);
     }
 
     let analysisWindowHours = 8;
-    if (analysisStart && analysisEnd) {
-      const [sh] = analysisStart.split(":").map(Number);
-      const [eh] = analysisEnd.split(":").map(Number);
-      const hours = eh - sh;
-      if (hours > 0) analysisWindowHours = Math.ceil(hours);
-    }
+    const [startH] = analysisStart.split(":").map(Number);
+    const hours = endH - startH;
+    if (hours > 0) analysisWindowHours = Math.ceil(hours);
 
     return {
       template_id: templateId,
@@ -247,31 +245,41 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
   const isValid = !!buildPayload();
 
   // Shared classes
-  const field = "w-full rounded-md border border-border bg-transparent px-3 h-9 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
-  const label = "text-xs font-medium text-muted-foreground";
+  const field = "w-full rounded-md border border-border bg-transparent px-3 h-9 text-[13px] text-foreground tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  const label = "text-[11px] font-medium text-muted-foreground tracking-wide";
+
+  // Human-readable trigger preview — derived from end of window
+  const triggerPreview = (() => {
+    if (!analysisEnd) return null;
+    const [h, m] = analysisEnd.split(":").map(Number);
+    if (isNaN(h) || isNaN(m)) return null;
+    const hr12 = h % 12 || 12;
+    const ampm = h < 12 ? "AM" : "PM";
+    return `${hr12}:${String(m).padStart(2, "0")} ${ampm}`;
+  })();
 
   return (
     <div className="rounded-lg border border-border bg-card/30">
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-3 border-b border-border/60">
-        <h3 className="text-sm font-semibold text-foreground">
+        <h3 className="text-[13px] font-semibold tracking-tight text-foreground">
           {isEdit ? "Edit schedule" : "New schedule"}
         </h3>
         <button
           onClick={onCancel}
-          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          className="text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors"
         >
           Cancel
         </button>
       </div>
 
-      <div className="px-5 py-4 space-y-5">
+      <div className="px-5 py-5 space-y-5">
         {/* Template */}
         <div>
           <label htmlFor="sched-template" className={label}>Template</label>
           <div className="mt-1.5">
             {isEdit ? (
-              <div className="text-sm text-foreground h-9 flex items-center px-3 rounded-md bg-muted/30 border border-border">
+              <div className="text-[13px] text-foreground h-9 flex items-center px-3 rounded-md bg-muted/30 border border-border">
                 {templates.find((t) => t.templateId === templateId)?.name ?? templateId}
               </div>
             ) : (
@@ -300,11 +308,11 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
             <label className={label}>
               Devices
               {selectedMicIds.length > 0 && (
-                <span className="ml-1.5 text-foreground/70">· {selectedMicIds.length} selected</span>
+                <span className="ml-1.5 text-foreground/70 tabular-nums">· {selectedMicIds.length} selected</span>
               )}
             </label>
             {devices.length > 0 && (
-              <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+              <div className="flex items-center gap-3 text-[11px] font-medium text-muted-foreground">
                 <button onClick={selectAllMics} className="hover:text-foreground transition-colors">All</button>
                 <button onClick={clearMics} className="hover:text-foreground transition-colors">None</button>
               </div>
@@ -312,11 +320,11 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
           </div>
           <div className="mt-1.5 rounded-md border border-border max-h-40 overflow-y-auto">
             {dataLoading ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground px-3 py-3">
+              <div className="flex items-center gap-2 text-[13px] text-muted-foreground px-3 py-2.5">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading devices…
               </div>
             ) : devices.length === 0 ? (
-              <p className="text-sm text-muted-foreground px-3 py-3">No devices found.</p>
+              <p className="text-[13px] text-muted-foreground px-3 py-2.5">No devices found.</p>
             ) : devices.map((device) => {
               const selected = selectedMicIds.includes(device.device_id);
               return (
@@ -334,7 +342,7 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
                   )}>
                     {selected && <Check className="h-3 w-3" />}
                   </div>
-                  <span className="text-sm text-foreground flex-1 truncate">{device.label || device.device_id}</span>
+                  <span className="text-[13px] text-foreground flex-1 truncate">{device.label || device.device_id}</span>
                   <span className={cn(
                     "h-1.5 w-1.5 rounded-full shrink-0",
                     device.status === "online" || device.status === "streaming" ? "bg-status-online"
@@ -347,90 +355,91 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
           </div>
         </div>
 
-        {/* Schedule: type + days/time */}
-        <div>
-          <label className={label}>Run</label>
-          <div className="mt-1.5 flex gap-1 rounded-md border border-border p-0.5 w-fit">
-            {(["recurring", "one_time"] as const).map((type) => (
-              <button
-                key={type}
-                onClick={() => setScheduleType(type)}
-                className={cn(
-                  "px-3 h-7 rounded text-xs font-medium transition-colors",
-                  scheduleType === type ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {type === "recurring" ? "Recurring" : "One-time"}
-              </button>
-            ))}
+        {/* Schedule: type + days + window */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <label className={label}>Schedule</label>
+            <div className="flex gap-0.5 rounded-md border border-border p-0.5">
+              {(["recurring", "one_time"] as const).map((type) => (
+                <button
+                  key={type}
+                  onClick={() => setScheduleType(type)}
+                  className={cn(
+                    "px-2.5 h-6 rounded-sm text-[11px] font-medium transition-colors",
+                    scheduleType === type ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {type === "recurring" ? "Recurring" : "One-time"}
+                </button>
+              ))}
+            </div>
           </div>
 
           {scheduleType === "recurring" ? (
-            <div className="mt-3 flex flex-wrap items-end gap-3">
-              {/* Day pills */}
-              <div className="flex gap-1">
-                {DAYS.map((day, idx) => {
-                  const selected = selectedDays.includes(day.value);
-                  return (
-                    <button
-                      key={idx}
-                      onClick={() => toggleDay(day.value)}
-                      className={cn(
-                        "h-9 w-9 rounded-md text-xs font-semibold transition-colors border",
-                        selected
-                          ? "bg-primary/15 border-primary/40 text-primary"
-                          : "border-border text-muted-foreground hover:text-foreground"
-                      )}
-                      aria-label={`Toggle day ${day.label}`}
-                    >
-                      {day.label}
-                    </button>
-                  );
-                })}
-              </div>
-              {/* Time */}
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">at</span>
-                <input
-                  type="time"
-                  className={cn(field, "w-28")}
-                  value={triggerTime}
-                  onChange={(e) => setTriggerTime(e.target.value)}
-                />
-              </div>
+            <div className="flex gap-1">
+              {DAYS.map((day, idx) => {
+                const selected = selectedDays.includes(day.value);
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => toggleDay(day.value)}
+                    className={cn(
+                      "h-9 flex-1 rounded-md text-[11px] font-semibold tracking-wide transition-colors border",
+                      selected
+                        ? "bg-primary/15 border-primary/40 text-primary"
+                        : "border-border text-muted-foreground hover:text-foreground"
+                    )}
+                    aria-label={`Toggle day ${day.label}`}
+                  >
+                    {day.label}
+                  </button>
+                );
+              })}
             </div>
           ) : (
-            <div className="mt-3 flex gap-3">
-              <input type="date" className={cn(field, "flex-1")} value={oneTimeDate} onChange={(e) => setOneTimeDate(e.target.value)} />
-              <input type="time" className={cn(field, "w-28")} value={oneTimeTime} onChange={(e) => setOneTimeTime(e.target.value)} />
-            </div>
+            <input
+              type="date"
+              className={field}
+              value={oneTimeDate}
+              onChange={(e) => setOneTimeDate(e.target.value)}
+            />
           )}
-        </div>
 
-        {/* Analysis window + timezone on one row */}
-        <div className="grid grid-cols-[1fr_1fr_1.5fr] gap-3">
-          <div>
-            <label htmlFor="sched-astart" className={label}>Analyze from</label>
-            <input id="sched-astart" type="time" className={cn(field, "mt-1.5")} value={analysisStart} onChange={(e) => setAnalysisStart(e.target.value)} />
-          </div>
-          <div>
-            <label htmlFor="sched-aend" className={label}>to</label>
-            <input id="sched-aend" type="time" className={cn(field, "mt-1.5")} value={analysisEnd} onChange={(e) => setAnalysisEnd(e.target.value)} />
-          </div>
-          <div>
-            <label htmlFor="sched-tz" className={label}>Timezone</label>
-            <div className="relative mt-1.5">
-              <select
-                id="sched-tz"
-                className={cn(field, "appearance-none pr-8 cursor-pointer")}
-                value={timezone}
-                onChange={(e) => setTimezone(e.target.value)}
-              >
-                {TIMEZONES.map((tz) => <option key={tz} value={tz}>{tz}</option>)}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          {/* Analysis window + timezone */}
+          <div className="grid grid-cols-[1fr_auto_1fr_1.4fr] gap-2 items-end">
+            <div>
+              <label htmlFor="sched-astart" className={label}>Analyze from</label>
+              <input id="sched-astart" type="time" className={cn(field, "mt-1.5")} value={analysisStart} onChange={(e) => setAnalysisStart(e.target.value)} />
+            </div>
+            <span className="text-xs text-muted-foreground pb-2.5">→</span>
+            <div>
+              <label htmlFor="sched-aend" className={label}>to</label>
+              <input id="sched-aend" type="time" className={cn(field, "mt-1.5")} value={analysisEnd} onChange={(e) => setAnalysisEnd(e.target.value)} />
+            </div>
+            <div>
+              <label htmlFor="sched-tz" className={label}>Timezone</label>
+              <div className="relative mt-1.5">
+                <select
+                  id="sched-tz"
+                  className={cn(field, "appearance-none pr-8 cursor-pointer")}
+                  value={timezone}
+                  onChange={(e) => setTimezone(e.target.value)}
+                >
+                  {TIMEZONES.map((tz) => <option key={tz} value={tz}>{tz}</option>)}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              </div>
             </div>
           </div>
+
+          {/* Trigger preview — shows when the job will actually fire */}
+          {triggerPreview && (
+            <p className="text-[11px] text-muted-foreground">
+              {scheduleType === "recurring"
+                ? `Runs at ${triggerPreview} on selected days · processes that day's audio window.`
+                : `Runs at ${triggerPreview} on ${oneTimeDate || "the selected date"} · processes that day's audio window.`}
+            </p>
+          )}
         </div>
 
         {/* Notes — progressive disclosure */}
@@ -440,7 +449,7 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
               <label htmlFor="sched-notes" className={label}>Notes</label>
               <textarea
                 id="sched-notes"
-                className="mt-1.5 w-full h-16 rounded-md border border-border bg-transparent px-3 py-2 text-sm text-foreground resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="mt-1.5 w-full h-16 rounded-md border border-border bg-transparent px-3 py-2 text-[13px] text-foreground resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 placeholder="e.g. Focus on shift handover periods"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
@@ -449,7 +458,7 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
           ) : (
             <button
               onClick={() => setShowNotes(true)}
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              className="text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors"
             >
               + Add notes
             </button>
@@ -459,7 +468,7 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
 
       {/* Footer: estimate + actions */}
       <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-border/60">
-        <div className="flex items-center gap-2 text-xs min-w-0">
+        <div className="flex items-center gap-2 text-[11px] min-w-0">
           {estimating ? (
             <>
               <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground shrink-0" />
@@ -468,11 +477,11 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
           ) : estimate ? (
             <>
               <Zap className="h-3.5 w-3.5 text-primary shrink-0" />
-              <span className="text-foreground font-medium">~{estimate.estimatedCredits} credits</span>
-              <span className="text-muted-foreground">· {estimate.estimatedDurationMin.toFixed(0)}m audio</span>
+              <span className="text-foreground font-semibold tabular-nums">~{estimate.estimatedCredits} credits</span>
+              <span className="text-muted-foreground tabular-nums">· {estimate.estimatedDurationMin.toFixed(0)}m audio</span>
             </>
           ) : submitError ? (
-            <span className="text-status-offline" role="alert">{submitError}</span>
+            <span className="text-status-offline font-medium" role="alert">{submitError}</span>
           ) : (
             <span className="text-muted-foreground">Select devices to see cost</span>
           )}

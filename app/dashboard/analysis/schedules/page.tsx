@@ -299,18 +299,17 @@ export default function SchedulesPage() {
       </div>
 
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-end justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Schedules</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Schedules</h1>
           <p className="mt-1 text-sm text-muted-foreground">Recurring and one-time analysis schedules</p>
         </div>
-        <Button
-          onClick={() => setFormMode(formMode === "new" ? null : "new")}
-          variant={formMode === "new" ? "outline" : "default"}
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          {formMode === "new" ? "Cancel" : "New Schedule"}
-        </Button>
+        {formMode === null && (
+          <Button onClick={() => setFormMode("new")}>
+            <Plus className="h-4 w-4 mr-2" />
+            New schedule
+          </Button>
+        )}
       </div>
 
       {error && <p className="text-sm text-red-400">{error}</p>}
