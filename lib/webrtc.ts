@@ -13,7 +13,17 @@ interface ListenClientOpts {
   onAudioLevel: (level: number) => void;
   onFrequencyData?: (data: Uint8Array) => void;
   onTrack: (stream: MediaStream) => void;
+  /** Fired when the server sends a listen_keepalive_prompt (idle timeout warning). */
+  onIdlePrompt?: (deadlineUnixMs: number) => void;
+  /** Fired when the server closes the WS with the idle-timeout close code (4408). */
+  onIdleClose?: (reason: "idle_timeout") => void;
 }
+
+export type ListenClientCloseReason =
+  | "user_stopped"
+  | "user_declined"
+  | "prompt_ignored"
+  | "hidden_too_long";
 
 export class ListenClient {
   private ws: WebSocket | null = null;
@@ -77,8 +87,14 @@ export class ListenClient {
       this.ws = ws;
       ws.onopen = () => resolve();
       ws.onerror = () => reject(new Error("WebSocket connection failed"));
-      ws.onclose = () => {
-        if (!this.disposed) this.opts.onStateChange("idle");
+      ws.onclose = (event) => {
+        if (this.disposed) return;
+        // Server closed us for being idle too long — surface so the UI can
+        // render a "stream closed" state instead of generic reconnect.
+        if (event.code === 4408) {
+          this.opts.onIdleClose?.("idle_timeout");
+        }
+        this.opts.onStateChange("idle");
       };
       ws.onmessage = (event) => {
         try {
@@ -107,6 +123,11 @@ export class ListenClient {
         this.opts.onStateChange("error");
         this.cleanup();
         break;
+      case "listen_keepalive_prompt": {
+        const deadline = typeof msg.deadline_unix_ms === "number" ? msg.deadline_unix_ms : Date.now();
+        this.opts.onIdlePrompt?.(deadline);
+        break;
+      }
     }
   }
 
@@ -213,7 +234,26 @@ export class ListenClient {
     }
   }
 
+  /** Tell the server the user is still actively listening. Resets the server's 10-min idle window. */
+  sendKeepaliveAck(): void {
+    this.sendWS({ type: "listen_keepalive_ack" });
+  }
+
+  /** Courtesy graceful-close signal. Logged server-side for telemetry. Best-effort — a closing WS will silently drop the send. */
+  sendClientClose(reason: ListenClientCloseReason): void {
+    this.sendWS({ type: "listen_client_close", reason });
+  }
+
   disconnect(): void {
+    if (this.disposed) return;
+    // Telemetry: tell the server this was an intentional user stop, not a
+    // dropped connection. Best-effort — send may fail if WS is already
+    // closing, that's fine.
+    try {
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        this.sendClientClose("user_stopped");
+      }
+    } catch { /* ignore */ }
     this.disposed = true;
     this.cleanup();
     this.opts.onStateChange("idle");
