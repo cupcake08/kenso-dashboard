@@ -1,8 +1,8 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
-import { Loader2, ArrowLeft, Calendar, Plus, Pencil, PauseCircle, PlayCircle, Trash2 } from "lucide-react";
+import { Loader2, ArrowLeft, CalendarClock, Plus, Pencil, PauseCircle, PlayCircle, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 import { toast } from "sonner";
 import { listSchedules, pauseSchedule, resumeSchedule, createSchedule, apiFetch } from "@/lib/api";
 import { cronToHuman } from "@/lib/cron";
@@ -11,6 +11,17 @@ import { BadgeVariant } from "@/components/ui/badge-variant";
 import { Button } from "@/components/ui/button";
 import { ScheduleForm, type CreateSchedulePayload } from "@/components/dashboard/schedule-form";
 import { cn } from "@/lib/utils";
+
+// Re-render every 30s so "Next run" countdowns tick without a full refetch.
+// Returns a Date.now() snapshot that live-updates.
+function useCurrentTime(intervalMs: number = 30_000): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), intervalMs);
+    return () => clearInterval(id);
+  }, [intervalMs]);
+  return now;
+}
 
 const IS_DEMO = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
@@ -58,16 +69,29 @@ const DEMO_SCHEDULES: AnalysisSchedule[] = [
 
 // cronToHuman is imported from @/lib/cron
 
-function formatRelative(iso: string | undefined): string {
+// Returns a human-readable relative time string anchored on `now` so multiple
+// calls during a single render tick stay consistent.
+function formatRelative(iso: string | undefined, now: number): string {
   if (!iso) return "—";
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "—";
-  const diffMs = d.getTime() - Date.now();
+  const diffMs = d.getTime() - now;
   const diffMin = Math.round(diffMs / 60000);
-  if (Math.abs(diffMin) < 60) return diffMin >= 0 ? `in ${diffMin}m` : `${-diffMin}m ago`;
+  // Sub-minute: "Due now" reads better than "in 0m"
+  if (diffMin === 0) return "Due now";
+  if (Math.abs(diffMin) < 60) return diffMin > 0 ? `in ${diffMin}m` : `${-diffMin}m ago`;
   const diffH = Math.round(diffMin / 60);
-  if (Math.abs(diffH) < 24) return diffH >= 0 ? `in ${diffH}h` : `${-diffH}h ago`;
+  if (Math.abs(diffH) < 24) return diffH > 0 ? `in ${diffH}h` : `${-diffH}h ago`;
+  const diffD = Math.round(diffH / 24);
+  if (Math.abs(diffD) < 7) return diffD > 0 ? `in ${diffD}d` : `${-diffD}d ago`;
   return d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+}
+
+// True when the next run is within 5 minutes — used to highlight the row.
+function isImminent(iso: string | undefined, now: number): boolean {
+  if (!iso) return false;
+  const diffMs = new Date(iso).getTime() - now;
+  return diffMs > 0 && diffMs < 5 * 60_000;
 }
 
 function targetLabel(s: AnalysisSchedule): string {
@@ -288,6 +312,11 @@ export default function SchedulesPage() {
     }
   }
 
+  const now = useCurrentTime();
+  const activeCount = schedules.filter(
+    (s) => s.enabled && !(s.pausedUntil && new Date(s.pausedUntil) > new Date(now))
+  ).length;
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -306,9 +335,19 @@ export default function SchedulesPage() {
       </div>
 
       {/* Header */}
-      <div className="flex items-end justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Schedules</h1>
+      <div className="flex items-end justify-between gap-4">
+        <div className="min-w-0">
+          <div className="flex items-baseline gap-3">
+            <h1 className="text-2xl font-semibold tracking-tight text-foreground">Schedules</h1>
+            {schedules.length > 0 && (
+              <span className="text-xs font-medium tabular-nums text-muted-foreground">
+                {schedules.length} total
+                {activeCount > 0 && activeCount !== schedules.length && (
+                  <> · <span className="text-emerald-400">{activeCount} active</span></>
+                )}
+              </span>
+            )}
+          </div>
           <p className="mt-1 text-sm text-muted-foreground">Recurring and one-time analysis schedules</p>
         </div>
         {formMode === null && (
@@ -342,80 +381,141 @@ export default function SchedulesPage() {
 
       {/* List */}
       {schedules.length === 0 ? (
-        <div className="rounded-xl border border-border bg-card/50 p-10 text-center">
-          <Calendar className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
-          <p className="text-sm text-muted-foreground">No schedules yet. Click &ldquo;New Schedule&rdquo; to create one.</p>
+        <div className="rounded-xl border border-dashed border-border bg-card/30 px-6 py-12">
+          <div className="mx-auto max-w-sm text-center">
+            <div className="mx-auto mb-4 flex h-10 w-10 items-center justify-center rounded-full border border-border bg-background">
+              <CalendarClock className="h-5 w-5 text-muted-foreground" />
+            </div>
+            <h3 className="text-sm font-semibold text-foreground">No schedules yet</h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Automate analysis by running templates on a recurring schedule, or trigger a one-time analysis for a specific window.
+            </p>
+            {formMode === null && (
+              <Button
+                size="sm"
+                className="mt-5"
+                onClick={() => setFormMode("new")}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Create your first schedule
+              </Button>
+            )}
+          </div>
         </div>
       ) : (
         <>
           {/* Desktop table */}
-          <div className="hidden sm:block rounded-xl border border-border overflow-hidden">
+          <LayoutGroup>
+          <div className="hidden sm:block rounded-xl border border-border overflow-hidden bg-card/30">
             <table className="w-full text-sm">
-              <thead className="border-b border-border bg-muted/30">
+              <thead className="border-b border-border bg-muted/20">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Template</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Target</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Schedule</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Status</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Next run</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Runs</th>
-                  <th className="px-4 py-3" />
+                  <th className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Template</th>
+                  <th className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-wider text-muted-foreground whitespace-nowrap">Target</th>
+                  <th className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Schedule</th>
+                  <th className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Status</th>
+                  <th className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-wider text-muted-foreground whitespace-nowrap">Next run</th>
+                  <th className="px-4 py-3 text-right text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Runs</th>
+                  <th className="px-4 py-3 w-1" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {schedules.map((s) => {
-                  const isPaused = !!s.pausedUntil && new Date(s.pausedUntil) > new Date();
+                {schedules.map((s, idx) => {
+                  const isPaused = !!s.pausedUntil && new Date(s.pausedUntil) > new Date(now);
                   const isPending = actionPending === s.scheduleId;
                   const showPausePicker = pauseState?.scheduleId === s.scheduleId;
+                  const imminent = !isPaused && s.enabled && isImminent(s.nextRunAt, now);
 
                   return (
-                    <tr key={s.scheduleId} className="hover:bg-muted/20 align-top">
-                      <td className="px-4 py-3">
-                        <p className="font-medium text-foreground">{s.templateName}</p>
+                    <motion.tr
+                      key={s.scheduleId}
+                      layout
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.24, delay: idx * 0.04, ease: [0.25, 1, 0.5, 1] }}
+                      className={cn(
+                        "align-top transition-colors",
+                        "hover:bg-muted/20",
+                        imminent && "bg-emerald-950/10"
+                      )}
+                    >
+                      <td className="px-4 py-4">
+                        <p className="text-[0.9375rem] font-semibold tracking-tight text-foreground leading-tight">
+                          {s.templateName}
+                        </p>
                       </td>
-                      <td className="px-4 py-3 text-muted-foreground text-xs">
-                        {targetLabel(s)}
+                      <td className="px-4 py-4 whitespace-nowrap">
+                        <span className="text-xs tabular-nums text-muted-foreground">
+                          {targetLabel(s)}
+                        </span>
                       </td>
-                      <td className="px-4 py-3">
-                        <p className="text-xs text-foreground">{cronToHuman(s.recurrenceRule)}</p>
+                      <td className="px-4 py-4">
+                        <p className="text-sm text-foreground leading-tight">
+                          {cronToHuman(s.recurrenceRule)}
+                        </p>
                         {s.analysisStartTime && s.analysisEndTime && (
-                          <p className="text-xs text-muted-foreground mt-0.5">
+                          <p className="mt-1 text-xs tabular-nums text-muted-foreground">
                             {s.analysisStartTime}–{s.analysisEndTime}
                           </p>
                         )}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-4">
                         {isPaused ? (
-                          <div>
-                            <BadgeVariant variant="amber" className="text-xs">Paused</BadgeVariant>
+                          <div className="space-y-1">
+                            <BadgeVariant variant="amber" className="text-xs">
+                              <span className="h-1.5 w-1.5 rounded-full bg-amber-400" aria-hidden />
+                              Paused
+                            </BadgeVariant>
                             {s.pauseReason && (
-                              <p className="text-xs text-muted-foreground mt-0.5">{s.pauseReason}</p>
+                              <p className="text-[11px] text-muted-foreground italic">{s.pauseReason}</p>
                             )}
-                            <p className="text-xs text-muted-foreground">
+                            <p className="text-[11px] tabular-nums text-muted-foreground">
                               until {new Date(s.pausedUntil!).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
                             </p>
                           </div>
                         ) : s.enabled ? (
-                          <BadgeVariant variant="emerald" className="text-xs">Active</BadgeVariant>
+                          <BadgeVariant variant="emerald" className="text-xs">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden />
+                            Active
+                          </BadgeVariant>
                         ) : (
-                          <BadgeVariant variant="slate" className="text-xs">Disabled</BadgeVariant>
+                          <BadgeVariant variant="slate" className="text-xs">
+                            <span className="h-1.5 w-1.5 rounded-full bg-slate-500" aria-hidden />
+                            Disabled
+                          </BadgeVariant>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-muted-foreground text-xs tabular-nums">
-                        {formatRelative(s.nextRunAt)}
+                      <td className="px-4 py-4 whitespace-nowrap">
+                        <span
+                          className={cn(
+                            "text-xs tabular-nums",
+                            imminent ? "font-semibold text-emerald-400" : "text-muted-foreground"
+                          )}
+                        >
+                          {imminent && (
+                            <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" aria-hidden />
+                          )}
+                          {formatRelative(s.nextRunAt, now)}
+                        </span>
                       </td>
-                      <td className="px-4 py-3 text-muted-foreground text-xs tabular-nums">
-                        {s.runCount}
+                      <td className="px-4 py-4 text-right">
+                        <span className={cn(
+                          "text-sm tabular-nums",
+                          s.runCount === 0 ? "text-muted-foreground/50" : "font-medium text-foreground"
+                        )}>
+                          {s.runCount === 0 ? "—" : s.runCount}
+                        </span>
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2 justify-end">
+                      <td className="px-4 py-4">
+                        <div className="flex items-center gap-1 justify-end">
                           {/* Edit */}
                           <button
                             onClick={() => setFormMode(formMode === s.scheduleId ? null : s.scheduleId)}
-                            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors"
-                            title="Edit"
+                            className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            title="Edit schedule"
+                            aria-label="Edit schedule"
                           >
-                            <Pencil className="h-3.5 w-3.5" />
+                            <Pencil className="h-4 w-4" />
                           </button>
 
                           {/* Pause/Resume */}
@@ -423,10 +523,11 @@ export default function SchedulesPage() {
                             <button
                               onClick={() => handleResume(s)}
                               disabled={isPending}
-                              className="p-1.5 rounded-lg text-amber-400 hover:text-amber-300 hover:bg-amber-400/10 transition-colors"
-                              title="Resume"
+                              className="p-2 rounded-lg text-amber-400 hover:text-amber-300 hover:bg-amber-400/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                              title="Resume schedule"
+                              aria-label="Resume schedule"
                             >
-                              {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PlayCircle className="h-3.5 w-3.5" />}
+                              {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
                             </button>
                           ) : (
                             <button
@@ -437,105 +538,141 @@ export default function SchedulesPage() {
                               }
                               disabled={isPending}
                               className={cn(
-                                "p-1.5 rounded-lg transition-colors",
+                                "p-2 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                                 showPausePicker
                                   ? "text-amber-400 bg-amber-400/10"
                                   : "text-muted-foreground hover:text-amber-400 hover:bg-amber-400/10"
                               )}
-                              title="Pause"
+                              title="Pause schedule"
+                              aria-label="Pause schedule"
                             >
-                              <PauseCircle className="h-3.5 w-3.5" />
+                              <PauseCircle className="h-4 w-4" />
                             </button>
                           )}
 
                           {/* Delete */}
                           <button
                             onClick={() => handleDelete(s)}
-                            className="p-1.5 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-400/10 transition-colors"
-                            title="Delete"
+                            className="p-2 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-400/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            title="Delete schedule"
+                            aria-label="Delete schedule"
                           >
-                            <Trash2 className="h-3.5 w-3.5" />
+                            <Trash2 className="h-4 w-4" />
                           </button>
                         </div>
 
                         {/* Inline pause date picker */}
-                        {showPausePicker && (
-                          <div className="mt-2 flex items-center gap-2">
-                            <input
-                              type="date"
-                              className="flex-1 rounded-lg border border-border bg-transparent px-2.5 py-1.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                              value={pauseState?.date ?? ""}
-                              onChange={(e) =>
-                                setPauseState((prev) => prev ? { ...prev, date: e.target.value } : null)
-                              }
-                              min={new Date().toISOString().split("T")[0]}
-                            />
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="text-xs h-7 px-2.5"
-                              disabled={!pauseState?.date || isPending}
-                              onClick={() => handlePause(s)}
+                        <AnimatePresence>
+                          {showPausePicker && (
+                            <motion.div
+                              key="pause-picker"
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: "auto" }}
+                              exit={{ opacity: 0, height: 0 }}
+                              transition={{ duration: 0.18, ease: [0.25, 1, 0.5, 1] }}
+                              className="overflow-hidden"
                             >
-                              {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Pause"}
-                            </Button>
-                          </div>
-                        )}
+                              <div className="mt-2 flex items-center gap-2">
+                                <input
+                                  type="date"
+                                  className="flex-1 rounded-lg border border-border bg-transparent px-2.5 py-1.5 text-xs tabular-nums text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                  value={pauseState?.date ?? ""}
+                                  onChange={(e) =>
+                                    setPauseState((prev) => prev ? { ...prev, date: e.target.value } : null)
+                                  }
+                                  min={new Date().toISOString().split("T")[0]}
+                                />
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-xs h-7 px-2.5"
+                                  disabled={!pauseState?.date || isPending}
+                                  onClick={() => handlePause(s)}
+                                >
+                                  {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Pause"}
+                                </Button>
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
                       </td>
-                    </tr>
+                    </motion.tr>
                   );
                 })}
               </tbody>
             </table>
           </div>
+          </LayoutGroup>
 
           {/* Mobile card list */}
           <div className="sm:hidden space-y-3">
-            {schedules.map((s) => {
-              const isPaused = !!s.pausedUntil && new Date(s.pausedUntil) > new Date();
+            {schedules.map((s, idx) => {
+              const isPaused = !!s.pausedUntil && new Date(s.pausedUntil) > new Date(now);
               const isPending = actionPending === s.scheduleId;
               const showPausePicker = pauseState?.scheduleId === s.scheduleId;
+              const imminent = !isPaused && s.enabled && isImminent(s.nextRunAt, now);
 
               return (
-                <div key={s.scheduleId} className="rounded-xl border border-border bg-card/50 p-4 space-y-3">
+                <motion.div
+                  key={s.scheduleId}
+                  layout
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.24, delay: idx * 0.04, ease: [0.25, 1, 0.5, 1] }}
+                  className={cn(
+                    "rounded-xl border border-border bg-card/50 p-4 space-y-3",
+                    imminent && "border-emerald-800/50 bg-emerald-950/10"
+                  )}
+                >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="font-medium text-sm text-foreground truncate">{s.templateName}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{targetLabel(s)}</p>
+                      <p className="text-[0.9375rem] font-semibold tracking-tight text-foreground truncate">{s.templateName}</p>
+                      <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">{targetLabel(s)}</p>
                     </div>
                     {isPaused ? (
-                      <BadgeVariant variant="amber" className="text-xs shrink-0">Paused</BadgeVariant>
+                      <BadgeVariant variant="amber" className="text-xs shrink-0">
+                        <span className="h-1.5 w-1.5 rounded-full bg-amber-400" aria-hidden />
+                        Paused
+                      </BadgeVariant>
                     ) : s.enabled ? (
-                      <BadgeVariant variant="emerald" className="text-xs shrink-0">Active</BadgeVariant>
+                      <BadgeVariant variant="emerald" className="text-xs shrink-0">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden />
+                        Active
+                      </BadgeVariant>
                     ) : (
-                      <BadgeVariant variant="slate" className="text-xs shrink-0">Disabled</BadgeVariant>
+                      <BadgeVariant variant="slate" className="text-xs shrink-0">
+                        <span className="h-1.5 w-1.5 rounded-full bg-slate-500" aria-hidden />
+                        Disabled
+                      </BadgeVariant>
                     )}
                   </div>
 
-                  <div className="text-xs text-muted-foreground space-y-1">
-                    <p>{cronToHuman(s.recurrenceRule)}</p>
+                  <div className="text-xs space-y-1 text-muted-foreground">
+                    <p className="text-foreground">{cronToHuman(s.recurrenceRule)}</p>
                     {s.analysisStartTime && s.analysisEndTime && (
-                      <p>Window: {s.analysisStartTime}–{s.analysisEndTime}</p>
+                      <p className="tabular-nums">Window: {s.analysisStartTime}–{s.analysisEndTime}</p>
                     )}
-                    <p>Next run: {formatRelative(s.nextRunAt)}</p>
-                    {isPaused && s.pauseReason && <p>Reason: {s.pauseReason}</p>}
+                    <p className={cn("tabular-nums", imminent && "font-semibold text-emerald-400")}>
+                      Next run: {formatRelative(s.nextRunAt, now)}
+                    </p>
+                    {isPaused && s.pauseReason && <p className="italic">Reason: {s.pauseReason}</p>}
                   </div>
 
-                  <div className="flex items-center gap-2 pt-1 border-t border-border">
+                  <div className="flex items-center gap-1 pt-1 border-t border-border">
                     <button
                       onClick={() => setFormMode(formMode === s.scheduleId ? null : s.scheduleId)}
-                      className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                      className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
                     >
-                      <Pencil className="h-3.5 w-3.5" />Edit
+                      <Pencil className="h-4 w-4" />Edit
                     </button>
 
                     {isPaused ? (
                       <button
                         onClick={() => handleResume(s)}
                         disabled={isPending}
-                        className="flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300 transition-colors ml-auto"
+                        className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs text-amber-400 hover:text-amber-300 hover:bg-amber-400/10 transition-colors ml-auto disabled:opacity-50"
                       >
-                        {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PlayCircle className="h-3.5 w-3.5" />}
+                        {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
                         Resume
                       </button>
                     ) : (
@@ -544,43 +681,54 @@ export default function SchedulesPage() {
                           setPauseState(showPausePicker ? null : { scheduleId: s.scheduleId, date: "" })
                         }
                         disabled={isPending}
-                        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-amber-400 transition-colors ml-auto"
+                        className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-amber-400 hover:bg-amber-400/10 transition-colors ml-auto"
                       >
-                        <PauseCircle className="h-3.5 w-3.5" />Pause
+                        <PauseCircle className="h-4 w-4" />Pause
                       </button>
                     )}
 
                     <button
                       onClick={() => handleDelete(s)}
-                      className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-red-400 transition-colors"
+                      className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-red-400 hover:bg-red-400/10 transition-colors"
                     >
-                      <Trash2 className="h-3.5 w-3.5" />Delete
+                      <Trash2 className="h-4 w-4" />Delete
                     </button>
                   </div>
 
-                  {showPausePicker && (
-                    <div className="flex items-center gap-2 pt-2">
-                      <input
-                        type="date"
-                        className="flex-1 rounded-lg border border-border bg-transparent px-2.5 py-1.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                        value={pauseState?.date ?? ""}
-                        onChange={(e) =>
-                          setPauseState((prev) => prev ? { ...prev, date: e.target.value } : null)
-                        }
-                        min={new Date().toISOString().split("T")[0]}
-                      />
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-xs h-7 px-2.5"
-                        disabled={!pauseState?.date || isPending}
-                        onClick={() => handlePause(s)}
+                  <AnimatePresence>
+                    {showPausePicker && (
+                      <motion.div
+                        key="pause-picker-mobile"
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.18, ease: [0.25, 1, 0.5, 1] }}
+                        className="overflow-hidden"
                       >
-                        {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Pause"}
-                      </Button>
-                    </div>
-                  )}
-                </div>
+                        <div className="flex items-center gap-2 pt-2">
+                          <input
+                            type="date"
+                            className="flex-1 rounded-lg border border-border bg-transparent px-2.5 py-1.5 text-xs tabular-nums text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                            value={pauseState?.date ?? ""}
+                            onChange={(e) =>
+                              setPauseState((prev) => prev ? { ...prev, date: e.target.value } : null)
+                            }
+                            min={new Date().toISOString().split("T")[0]}
+                          />
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-xs h-7 px-2.5"
+                            disabled={!pauseState?.date || isPending}
+                            onClick={() => handlePause(s)}
+                          >
+                            {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Pause"}
+                          </Button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
               );
             })}
           </div>
