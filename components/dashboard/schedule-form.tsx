@@ -270,8 +270,12 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
     if (scheduleType === "recurring") {
       if (selectedDays.length === 0) return null;
       recurrenceRule = buildCron(selectedDays, endH, endM);
-      // Backend's computeNextRun handles timezone-correct computation on first tick.
-      nextRunUnix = Math.floor(Date.now() / 1000);
+      // For recurring schedules the server computes NextRunAt from the cron
+      // rule + timezone — we just send 0 as a placeholder and let the backend
+      // pick the correct next occurrence. Previously this sent Date.now(),
+      // which caused the engine to fire the job immediately on creation
+      // regardless of the Mon-Fri filter (server log: Sat morning job).
+      nextRunUnix = 0;
     } else {
       if (!oneTimeDate) return null;
       recurrenceRule = `once:${oneTimeDate}T${analysisEnd}`;
