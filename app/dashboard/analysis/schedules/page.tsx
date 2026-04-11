@@ -94,6 +94,17 @@ function isImminent(iso: string | undefined, now: number): boolean {
   return diffMs > 0 && diffMs < 5 * 60_000;
 }
 
+// True when the analysis window crosses midnight (start > end by clock time).
+// Used to surface a small "↷" affordance so operators aren't surprised that
+// an overnight schedule analyzes the previous day's audio.
+function isOvernightWindow(startTime?: string, endTime?: string): boolean {
+  if (!startTime || !endTime) return false;
+  const [sh, sm] = startTime.split(":").map(Number);
+  const [eh, em] = endTime.split(":").map(Number);
+  if (isNaN(sh) || isNaN(sm) || isNaN(eh) || isNaN(em)) return false;
+  return eh * 60 + em <= sh * 60 + sm && !(sh === eh && sm === em);
+}
+
 function targetLabel(s: AnalysisSchedule): string {
   if (s.shopIds && s.shopIds.length > 0) {
     return `${s.shopIds.length} location${s.shopIds.length !== 1 ? "s" : ""}`;
@@ -457,8 +468,17 @@ export default function SchedulesPage() {
                           {cronToDaysLabel(s.recurrenceRule)}
                         </p>
                         {s.analysisStartTime && s.analysisEndTime && (
-                          <p className="mt-1 text-[11px] slashed-zero tabular-nums text-muted-foreground/70">
-                            {s.analysisStartTime}–{s.analysisEndTime}
+                          <p className="mt-1 inline-flex items-center gap-1 text-[11px] slashed-zero tabular-nums text-muted-foreground/70">
+                            <span>{s.analysisStartTime}–{s.analysisEndTime}</span>
+                            {isOvernightWindow(s.analysisStartTime, s.analysisEndTime) && (
+                              <span
+                                className="font-sans text-indigo-400"
+                                title="Overnight — window spans midnight"
+                                aria-label="Overnight window"
+                              >
+                                ↷
+                              </span>
+                            )}
                           </p>
                         )}
                       </td>
@@ -623,14 +643,24 @@ export default function SchedulesPage() {
               // Use `cronToDaysLabel` (days only) not `cronToHuman` (days + time) —
               // the trigger time is the end of the analysis window by design, so
               // printing it here would duplicate the window's end hour.
+              const overnight = isOvernightWindow(s.analysisStartTime, s.analysisEndTime);
               const metaParts: React.ReactNode[] = [
                 <span key="target" className="slashed-zero tabular-nums">{targetLabel(s)}</span>,
                 <span key="cron" className="font-medium text-foreground/90">{cronToDaysLabel(s.recurrenceRule)}</span>,
               ];
               if (s.analysisStartTime && s.analysisEndTime) {
                 metaParts.push(
-                  <span key="window" className="slashed-zero tabular-nums">
+                  <span key="window" className="inline-flex items-center gap-1 slashed-zero tabular-nums">
                     {s.analysisStartTime}–{s.analysisEndTime}
+                    {overnight && (
+                      <span
+                        className="text-indigo-400"
+                        title="Overnight — window spans midnight"
+                        aria-label="Overnight window"
+                      >
+                        ↷
+                      </span>
+                    )}
                   </span>
                 );
               }

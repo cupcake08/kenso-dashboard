@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Loader2, Check, Zap, ChevronDown } from "lucide-react";
+import { Loader2, Check, Zap, ChevronDown, Moon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { listTemplates, estimateCredits, apiFetch, normalizeDevice } from "@/lib/api";
@@ -366,6 +366,29 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
     return `${hr12}:${String(m).padStart(2, "0")} ${ampm}`;
   })();
 
+  // Detect overnight window (start time later in the day than end time).
+  // Used to render a "spans midnight" affordance so the user isn't surprised
+  // by the cross-day semantics.
+  const isOvernight = (() => {
+    if (!analysisStart || !analysisEnd) return false;
+    const [sh, sm] = analysisStart.split(":").map(Number);
+    const [eh, em] = analysisEnd.split(":").map(Number);
+    if (isNaN(sh) || isNaN(sm) || isNaN(eh) || isNaN(em)) return false;
+    return eh * 60 + em <= sh * 60 + sm && !(sh === eh && sm === em);
+  })();
+
+  // Total window duration in hours, wrapping past midnight for overnight.
+  const windowHours = (() => {
+    if (!analysisStart || !analysisEnd) return 0;
+    const [sh, sm] = analysisStart.split(":").map(Number);
+    const [eh, em] = analysisEnd.split(":").map(Number);
+    if (isNaN(sh) || isNaN(sm) || isNaN(eh) || isNaN(em)) return 0;
+    const startMin = sh * 60 + sm;
+    const endMin = eh * 60 + em;
+    const delta = isOvernight ? (24 * 60 - startMin) + endMin : endMin - startMin;
+    return delta / 60;
+  })();
+
   return (
     <div className="rounded-lg border border-border bg-card/30">
       {/* Header */}
@@ -519,7 +542,16 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
               <label htmlFor="sched-astart" className={label}>Analyze from</label>
               <input id="sched-astart" type="time" className={cn(field, "mt-1.5")} value={analysisStart} onChange={(e) => setAnalysisStart(e.target.value)} />
             </div>
-            <span className="text-xs text-muted-foreground pb-2.5">→</span>
+            <span
+              className={cn(
+                "pb-2.5 text-xs transition-colors",
+                isOvernight ? "text-indigo-400" : "text-muted-foreground"
+              )}
+              aria-label={isOvernight ? "crosses midnight" : "to"}
+              title={isOvernight ? "Window crosses midnight" : undefined}
+            >
+              {isOvernight ? "↷" : "→"}
+            </span>
             <div>
               <label htmlFor="sched-aend" className={label}>to</label>
               <input id="sched-aend" type="time" className={cn(field, "mt-1.5")} value={analysisEnd} onChange={(e) => setAnalysisEnd(e.target.value)} />
@@ -540,12 +572,38 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
             </div>
           </div>
 
+          {/* Overnight affordance — shows when the window spans midnight.
+              Tells the user which day the cron day-picker refers to so they
+              aren't surprised that "Mon" + "22:00→06:00" analyzes Sunday
+              night's audio. */}
+          {isOvernight && (
+            <div className="flex items-start gap-2 rounded-md border border-indigo-500/30 bg-indigo-500/[0.06] px-3 py-2">
+              <Moon className="h-3.5 w-3.5 shrink-0 text-indigo-400 mt-0.5" aria-hidden />
+              <div className="text-[11px] leading-relaxed text-muted-foreground">
+                <span className="font-semibold text-indigo-400">Overnight window</span>
+                {" — "}
+                <span className="tabular-nums">
+                  spans midnight ({windowHours.toFixed(windowHours % 1 ? 1 : 0)}h total)
+                </span>
+                . On the day the job fires, it analyzes audio from{" "}
+                <span className="tabular-nums text-foreground">{analysisStart}</span>{" "}
+                the <span className="font-medium text-foreground">previous day</span> through{" "}
+                <span className="tabular-nums text-foreground">{analysisEnd}</span>{" "}
+                of that day.
+              </div>
+            </div>
+          )}
+
           {/* Trigger preview — shows when the job will actually fire */}
           {triggerPreview && (
             <p className="text-[11px] text-muted-foreground">
               {scheduleType === "recurring"
-                ? `Runs at ${triggerPreview} on selected days · processes that day's audio window.`
-                : `Runs at ${triggerPreview} on ${oneTimeDate || "the selected date"} · processes that day's audio window.`}
+                ? isOvernight
+                  ? `Runs at ${triggerPreview} on selected days · processes the previous night's audio window.`
+                  : `Runs at ${triggerPreview} on selected days · processes that day's audio window.`
+                : isOvernight
+                  ? `Runs at ${triggerPreview} on ${oneTimeDate || "the selected date"} · processes the previous night's audio window.`
+                  : `Runs at ${triggerPreview} on ${oneTimeDate || "the selected date"} · processes that day's audio window.`}
             </p>
           )}
         </div>
