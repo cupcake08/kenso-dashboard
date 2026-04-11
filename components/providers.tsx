@@ -3,9 +3,13 @@
 import { useEffect } from "react";
 import { MotionConfig } from "framer-motion";
 
+// Cookie outlives the Firebase ID token (which expires every ~1h). The
+// onIdTokenChanged listener in Providers refreshes this cookie whenever Firebase
+// rotates the token, so a 24h TTL just keeps returning users logged in across
+// browser sessions without forcing a password re-entry.
 export function setAuthCookie(token: string) {
   const secure = typeof window !== "undefined" && window.location.protocol === "https:" ? "; secure" : "";
-  document.cookie = `firebase-token=${token}; path=/${secure}; samesite=lax; max-age=${60 * 60}`;
+  document.cookie = `firebase-token=${token}; path=/${secure}; samesite=lax; max-age=${60 * 60 * 24}`;
 }
 
 export function clearAuthCookie() {

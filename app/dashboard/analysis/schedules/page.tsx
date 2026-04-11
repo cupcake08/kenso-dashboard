@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Loader2, ArrowLeft, Calendar, Plus, Pencil, PauseCircle, PlayCircle, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
+import { toast } from "sonner";
 import { listSchedules, pauseSchedule, resumeSchedule, createSchedule, apiFetch } from "@/lib/api";
 import { cronToHuman } from "@/lib/cron";
 import type { AnalysisSchedule } from "@/types/analysis";
@@ -233,10 +234,13 @@ export default function SchedulesPage() {
             x.scheduleId === s.scheduleId ? { ...x, pausedUntil: until } : x
           )
         );
+        toast.success("Schedule paused");
       }
       setPauseState(null);
-    } catch {
-      // ignore
+    } catch (err) {
+      toast.error("Couldn't pause schedule", {
+        description: err instanceof Error ? err.message : "Please try again",
+      });
     } finally {
       setActionPending(null);
     }
@@ -259,9 +263,12 @@ export default function SchedulesPage() {
             x.scheduleId === s.scheduleId ? { ...x, pausedUntil: undefined, pauseReason: undefined } : x
           )
         );
+        toast.success("Schedule resumed");
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      toast.error("Couldn't resume schedule", {
+        description: err instanceof Error ? err.message : "Please try again",
+      });
     } finally {
       setActionPending(null);
     }

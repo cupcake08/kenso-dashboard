@@ -43,10 +43,14 @@ export async function apiFetch<T>(
     throw new Error(message);
   }
   const text = await res.text();
-  if (!text) return [] as unknown as T;
+  // 204 No Content or empty body → return undefined. Caller is responsible for
+  // handling void-returning endpoints. Previously this returned `[] as T` which
+  // silently returned an array for object-returning endpoints.
+  if (!text) return undefined as T;
   const json = JSON.parse(text);
-  // Go backend wraps all responses in {"data": ...}
-  return (json?.data ?? json ?? []) as T;
+  // Go backend wraps all responses in {"data": ...}. Unwrap if present, otherwise
+  // return the raw object. Do NOT fall back to `[]` — that was a type lie.
+  return (json?.data ?? json) as T;
 }
 
 // Enterprise API — Firebase auth, unwraps {"data": ...} envelope

@@ -49,12 +49,17 @@ const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 /**
  * Parse a 5-part cron expression into its components.
  * Returns sensible defaults (Mon–Fri, 9:00) on parse failure.
+ *
+ * NOTE: uses Number.isNaN guard rather than `|| fallback` because `parseInt("0")`
+ * is a valid zero (midnight) but `0 || 9` would incorrectly coerce it to 9.
  */
 export function parseCron(cron: string): { days: number[]; hour: number; minute: number } {
   const parts = cron.split(" ");
   if (parts.length !== 5) return { days: [1, 2, 3, 4, 5], hour: 9, minute: 0 };
-  const minute = parseInt(parts[0]) || 0;
-  const hour = parseInt(parts[1]) || 9;
+  const minuteNum = parseInt(parts[0]);
+  const hourNum = parseInt(parts[1]);
+  const minute = Number.isNaN(minuteNum) ? 0 : minuteNum;
+  const hour = Number.isNaN(hourNum) ? 9 : hourNum;
   const days = expandCronDays(parts[4]);
   return { days: days.length > 0 ? days : [1, 2, 3, 4, 5], hour, minute };
 }
