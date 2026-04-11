@@ -66,7 +66,12 @@ export function useRecordingsPlayer(deviceId: string) {
   // Timeline state
   const nextScheduleTimeRef = useRef(0); // next audioCtx.currentTime to schedule at
   const nextSegIdxRef = useRef(0);       // next segment index to schedule
-  const playStartCtxTime = useRef(0);    // audioCtx.currentTime when playback started
+  // Display clock uses performance.now() (wall clock) — decoupled from the
+  // AudioContext clock so the progress bar stays smooth even when the audio
+  // engine is briefly suspended (e.g. after a pause → resume transition, where
+  // ctx.currentTime doesn't advance for a few frames). Audio scheduling still
+  // uses ctx.currentTime for sample-accurate gapless playback.
+  const playStartWallMs = useRef(0);     // performance.now() when playback started
   const playStartGlobal = useRef(0);     // global timeline offset when playback started
   const playingRef = useRef(false);
   const speedRef = useRef(1);
@@ -151,6 +156,31 @@ export function useRecordingsPlayer(deviceId: string) {
     return 0;
   }, []);
 
+  // Stop all scheduled sources
+  const stopAll = useCallback(() => {
+    scheduledRef.current.forEach((s) => { try { s.source.stop(); } catch { /* */ } });
+    scheduledRef.current = [];
+    cancelAnimationFrame(rafRef.current);
+  }, []);
+
+  // End-of-playback detection: called from every source.onended. Fires when
+  // nothing is scheduled AND we've already consumed every segment. Handles the
+  // 1-segment case (where scheduleAhead's while loop never runs) uniformly
+  // with the N-segment case. Safe to call multiple times.
+  const maybeEndPlayback = useCallback(() => {
+    if (!playingRef.current) return;
+    if (scheduledRef.current.length > 0) return;
+    if (nextSegIdxRef.current < segments.length) return;
+    playingRef.current = false;
+    cancelAnimationFrame(rafRef.current);
+    setState((s) => ({
+      ...s,
+      playing: false,
+      currentTime: s.totalDuration,
+      currentSegmentIdx: Math.max(0, segments.length - 1),
+    }));
+  }, [segments]);
+
   // Schedule the next N segments ahead of the current playback position
   const scheduleAhead = useCallback(async () => {
     const ctx = ctxRef.current;
@@ -193,38 +223,31 @@ export function useRecordingsPlayer(deviceId: string) {
         segIdx: idx,
       });
 
-      // When this source ends, clean up and maybe schedule more
+      // When this source ends, clean up and maybe schedule more.
+      // maybeEndPlayback handles the terminal case uniformly for 1-seg and N-seg.
       source.onended = () => {
         scheduledRef.current = scheduledRef.current.filter((s) => s.source !== source);
-        if (playingRef.current) scheduleAhead();
+        if (!playingRef.current) return;
+        scheduleAhead();
+        maybeEndPlayback();
       };
 
       idx++;
       nextSegIdxRef.current = idx;
-
-      // If this was the last segment, signal end of playback after it finishes
-      if (idx >= segs.length) {
-        const endTime = scheduledAt + playDuration;
-        const delay = (endTime - ctx.currentTime) * 1000;
-        setTimeout(() => {
-          if (playingRef.current && nextSegIdxRef.current >= segs.length) {
-            playingRef.current = false;
-            cancelAnimationFrame(rafRef.current);
-            setState((s) => ({ ...s, playing: false }));
-          }
-        }, Math.max(0, delay + 100));
-      }
     }
 
     setState((s) => ({ ...s, buffering: false }));
-  }, [segments, decodeSegment, findStartOffset]);
+  }, [segments, decodeSegment, findStartOffset, maybeEndPlayback]);
 
-  // Time update loop (runs via rAF)
+  // Time update loop (runs via rAF). Uses performance.now() — NOT ctx.currentTime —
+  // so the display clock keeps ticking even when the AudioContext is briefly
+  // suspended or in a resume transition. The loop self-perpetuates as long as
+  // playingRef.current is true; pause and maybeEndPlayback clear the ref so the
+  // loop dies cleanly on its next frame.
   const updateTime = useCallback(() => {
-    const ctx = ctxRef.current;
-    if (!ctx || !playingRef.current) return;
+    if (!playingRef.current) return;
 
-    const elapsed = (ctx.currentTime - playStartCtxTime.current) * speedRef.current;
+    const elapsed = ((performance.now() - playStartWallMs.current) / 1000) * speedRef.current;
     const globalTime = playStartGlobal.current + elapsed;
 
     // Find which segment we're in
@@ -243,13 +266,6 @@ export function useRecordingsPlayer(deviceId: string) {
     rafRef.current = requestAnimationFrame(updateTime);
   }, []);
 
-  // Stop all scheduled sources
-  const stopAll = useCallback(() => {
-    scheduledRef.current.forEach((s) => { try { s.source.stop(); } catch { /* */ } });
-    scheduledRef.current = [];
-    cancelAnimationFrame(rafRef.current);
-  }, []);
-
   // Play from a specific global time position
   const playFrom = useCallback((globalSeconds: number) => {
     const ctx = ensureCtx();
@@ -263,7 +279,7 @@ export function useRecordingsPlayer(deviceId: string) {
     }
 
     playingRef.current = true;
-    playStartCtxTime.current = ctx.currentTime;
+    playStartWallMs.current = performance.now();
     playStartGlobal.current = globalSeconds;
     nextSegIdxRef.current = segIdx;
     nextScheduleTimeRef.current = ctx.currentTime + 0.01;
@@ -299,7 +315,9 @@ export function useRecordingsPlayer(deviceId: string) {
 
       source.onended = () => {
         scheduledRef.current = scheduledRef.current.filter((s) => s.source !== source);
-        if (playingRef.current) scheduleAhead();
+        if (!playingRef.current) return;
+        scheduleAhead();
+        maybeEndPlayback();
       };
 
       nextSegIdxRef.current = segIdx + 1;
@@ -310,7 +328,7 @@ export function useRecordingsPlayer(deviceId: string) {
     })();
 
     rafRef.current = requestAnimationFrame(updateTime);
-  }, [segments, ensureCtx, stopAll, decodeSegment, findStartOffset, scheduleAhead, updateTime]);
+  }, [segments, ensureCtx, stopAll, decodeSegment, findStartOffset, scheduleAhead, maybeEndPlayback, updateTime]);
 
   const play = useCallback((fromIdx?: number) => {
     const idx = fromIdx ?? 0;
