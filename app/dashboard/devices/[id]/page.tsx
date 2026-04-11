@@ -13,6 +13,8 @@ import { BadgeVariant } from "@/components/ui/badge-variant";
 import { Skeleton, WindowSkeleton } from "@/components/ui/skeleton";
 import { Waveform } from "@/components/ui/waveform";
 import { useListenLive } from "@/hooks/use-listen";
+import { useListenIdle } from "@/hooks/use-listen-idle";
+import { LiveListenIdlePrompt } from "@/components/dashboard/live-listen-idle-prompt";
 import { RecordingsPlayer } from "@/components/dashboard/recordings-player";
 
 type Tab = "listen" | "recordings" | "recent" | "report";
@@ -61,10 +63,13 @@ export default function DeviceDetailPage() {
   const [selectedWindow, setSelectedWindow] = useState<WindowSummary | null>(null);
   const [windowDetail, setWindowDetail] = useState<WindowDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const { audioRef, state: listenState, audioLevel, frequencyDataRef, volume, setVolume, toggle: toggleListen } = useListenLive(
+  const { audioRef, state: listenState, audioLevel, frequencyDataRef, volume, setVolume, toggle: toggleListen, clientRef } = useListenLive(
     deviceId,
     device?.shop_id ?? ""
   );
+
+  const isListenConnected = listenState === "connected" || listenState === "connecting";
+  const { state: idleState, acknowledge: acknowledgeIdle, dismiss: dismissIdle } = useListenIdle(clientRef, isListenConnected);
 
   useEffect(() => {
     if (process.env.NEXT_PUBLIC_DEMO_MODE === "true") {
@@ -195,6 +200,29 @@ export default function DeviceDetailPage() {
         {tab === "listen" && (
           <motion.div key="listen" role="tabpanel" id="panel-listen" aria-labelledby="listen" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
             <div className="rounded-xl border border-border bg-card/50 overflow-hidden">
+              {idleState.promptActive && idleState.countdownSeconds !== null ? (
+                <LiveListenIdlePrompt
+                  countdownSeconds={idleState.countdownSeconds}
+                  onAcknowledge={acknowledgeIdle}
+                  onDismiss={dismissIdle}
+                />
+              ) : idleState.idleClosedReason !== null ? (
+                <div className="flex flex-col items-center justify-center gap-4 p-8 text-center">
+                  <p className="text-sm text-muted-foreground max-w-xs">
+                    {idleState.idleClosedReason === "hidden_too_long"
+                      ? "Stream closed — you were away from this tab"
+                      : "Stream closed — no activity detected"}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={toggleListen}
+                    className="inline-flex items-center justify-center rounded-md bg-foreground px-4 py-2 text-[13px] font-medium text-background transition-colors hover:bg-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  >
+                    Start listening again
+                  </button>
+                </div>
+              ) : (
+                <>
               {/* Waveform */}
               <div className="h-28 sm:h-32">
                 <Waveform playing={listenState === "connected"} frequencyDataRef={frequencyDataRef} />
@@ -291,6 +319,8 @@ export default function DeviceDetailPage() {
                   </button>
                 </div>
               </div>
+                </>
+              )}
             </div>
           </motion.div>
         )}
