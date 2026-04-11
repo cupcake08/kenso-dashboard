@@ -15,6 +15,9 @@ type PlanState = "active" | "grace" | "expired" | "loading";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
+  // Mobile drawer state — only has an effect below md; the Sidebar component
+  // ignores it on desktop. Starts closed so the drawer never flashes on load.
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [planState, setPlanState] = useState<PlanState>("loading");
   const [graceDaysLeft, setGraceDaysLeft] = useState(0);
   const [dismissedGrace, setDismissedGrace] = useState(false);
@@ -63,6 +66,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     setDismissedGrace(false);
   }, [pathname]);
 
+  // Auto-close the mobile drawer when the user navigates. Without this, tapping
+  // a nav link would leave the drawer sitting open on top of the new page.
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
+
   // Hard-blocked: all paths except usage/settings (so they can recharge)
   const allowedWhenBlocked = ["/dashboard/usage", "/dashboard/settings"];
   const isBlocked = planState === "expired" && !allowedWhenBlocked.some((p) => pathname.startsWith(p));
@@ -71,10 +80,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <div className="flex h-screen flex-col overflow-hidden bg-background">
       {process.env.NEXT_PUBLIC_DEMO_MODE === "true" && <DemoBanner />}
       <div className="flex flex-1 overflow-hidden">
-        <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)} />
+        <Sidebar
+          collapsed={collapsed}
+          onToggle={() => setCollapsed(!collapsed)}
+          mobileOpen={mobileOpen}
+          onMobileClose={() => setMobileOpen(false)}
+        />
         <div className="flex flex-col flex-1 overflow-hidden">
-          <Topbar collapsed={collapsed} />
-          <main className="flex-1 overflow-y-auto p-6 relative">
+          <Topbar
+            collapsed={collapsed}
+            onMobileMenuToggle={() => setMobileOpen((v) => !v)}
+          />
+          <main className="flex-1 overflow-y-auto p-4 md:p-6 relative">
             <div className="absolute inset-0 bg-dot-pattern opacity-[0.15] pointer-events-none" />
 
             {/* Grace period modal overlay */}
