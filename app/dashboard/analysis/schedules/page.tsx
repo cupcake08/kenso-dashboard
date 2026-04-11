@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { Loader2, ArrowLeft, CalendarClock, Plus, Pencil, PauseCircle, PlayCircle, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
@@ -404,9 +404,10 @@ export default function SchedulesPage() {
         </div>
       ) : (
         <>
-          {/* Desktop table */}
+          {/* Desktop table — only at lg+ (≥1024px) because the 7-column layout
+              needs room to breathe. Below that, the compact card list renders. */}
           <LayoutGroup>
-          <div className="hidden sm:block rounded-xl border border-border overflow-hidden bg-card/30">
+          <div className="hidden lg:block rounded-xl border border-border overflow-hidden bg-card/30">
             <table className="w-full text-sm">
               <thead className="border-b border-border bg-muted/20">
                 <tr>
@@ -604,13 +605,29 @@ export default function SchedulesPage() {
           </div>
           </LayoutGroup>
 
-          {/* Mobile card list */}
-          <div className="sm:hidden space-y-3">
+          {/* Compact list — everything below lg (1024px). Horizontal-first,
+              meta as a single bullet-separated strip. Scales from 320px phones
+              to 1023px tablets without a label-value vertical stack. */}
+          <div className="lg:hidden space-y-2">
             {schedules.map((s, idx) => {
               const isPaused = !!s.pausedUntil && new Date(s.pausedUntil) > new Date(now);
               const isPending = actionPending === s.scheduleId;
               const showPausePicker = pauseState?.scheduleId === s.scheduleId;
               const imminent = !isPaused && s.enabled && isImminent(s.nextRunAt, now);
+
+              // Build a dot-separated meta strip: target · cadence · window · next run
+              // This reads as a single sentence at any width and wraps naturally.
+              const metaParts: React.ReactNode[] = [
+                <span key="target" className="tabular-nums">{targetLabel(s)}</span>,
+                <span key="cron">{cronToHuman(s.recurrenceRule)}</span>,
+              ];
+              if (s.analysisStartTime && s.analysisEndTime) {
+                metaParts.push(
+                  <span key="window" className="tabular-nums">
+                    {s.analysisStartTime}–{s.analysisEndTime}
+                  </span>
+                );
+              }
 
               return (
                 <motion.div
@@ -620,81 +637,114 @@ export default function SchedulesPage() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.24, delay: idx * 0.04, ease: [0.25, 1, 0.5, 1] }}
                   className={cn(
-                    "rounded-xl border border-border bg-card/50 p-4 space-y-3",
+                    "rounded-xl border border-border bg-card/40 px-4 py-3.5 transition-colors",
+                    "hover:bg-card/60",
                     imminent && "border-emerald-800/50 bg-emerald-950/10"
                   )}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-[0.9375rem] font-semibold tracking-tight text-foreground truncate">{s.templateName}</p>
-                      <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">{targetLabel(s)}</p>
-                    </div>
+                  {/* Header row: title + status + actions — everything inline */}
+                  <div className="flex items-center gap-3">
+                    <p className="min-w-0 flex-1 truncate text-[0.9375rem] font-semibold tracking-tight text-foreground">
+                      {s.templateName}
+                    </p>
+
+                    {/* Status badge */}
                     {isPaused ? (
-                      <BadgeVariant variant="amber" className="text-xs shrink-0">
+                      <BadgeVariant variant="amber" className="shrink-0 text-xs">
                         <span className="h-1.5 w-1.5 rounded-full bg-amber-400" aria-hidden />
                         Paused
                       </BadgeVariant>
                     ) : s.enabled ? (
-                      <BadgeVariant variant="emerald" className="text-xs shrink-0">
+                      <BadgeVariant variant="emerald" className="shrink-0 text-xs">
                         <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden />
                         Active
                       </BadgeVariant>
                     ) : (
-                      <BadgeVariant variant="slate" className="text-xs shrink-0">
+                      <BadgeVariant variant="slate" className="shrink-0 text-xs">
                         <span className="h-1.5 w-1.5 rounded-full bg-slate-500" aria-hidden />
                         Disabled
                       </BadgeVariant>
                     )}
-                  </div>
 
-                  <div className="text-xs space-y-1 text-muted-foreground">
-                    <p className="text-foreground">{cronToHuman(s.recurrenceRule)}</p>
-                    {s.analysisStartTime && s.analysisEndTime && (
-                      <p className="tabular-nums">Window: {s.analysisStartTime}–{s.analysisEndTime}</p>
-                    )}
-                    <p className={cn("tabular-nums", imminent && "font-semibold text-emerald-400")}>
-                      Next run: {formatRelative(s.nextRunAt, now)}
-                    </p>
-                    {isPaused && s.pauseReason && <p className="italic">Reason: {s.pauseReason}</p>}
-                  </div>
-
-                  <div className="flex items-center gap-1 pt-1 border-t border-border">
-                    <button
-                      onClick={() => setFormMode(formMode === s.scheduleId ? null : s.scheduleId)}
-                      className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
-                    >
-                      <Pencil className="h-4 w-4" />Edit
-                    </button>
-
-                    {isPaused ? (
+                    {/* Actions — inline, always visible, no separator needed */}
+                    <div className="flex shrink-0 items-center gap-0.5">
                       <button
-                        onClick={() => handleResume(s)}
-                        disabled={isPending}
-                        className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs text-amber-400 hover:text-amber-300 hover:bg-amber-400/10 transition-colors ml-auto disabled:opacity-50"
+                        onClick={() => setFormMode(formMode === s.scheduleId ? null : s.scheduleId)}
+                        className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        title="Edit schedule"
+                        aria-label="Edit schedule"
                       >
-                        {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
-                        Resume
+                        <Pencil className="h-4 w-4" />
                       </button>
-                    ) : (
+                      {isPaused ? (
+                        <button
+                          onClick={() => handleResume(s)}
+                          disabled={isPending}
+                          className="p-2 rounded-lg text-amber-400 hover:text-amber-300 hover:bg-amber-400/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                          title="Resume schedule"
+                          aria-label="Resume schedule"
+                        >
+                          {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() =>
+                            setPauseState(showPausePicker ? null : { scheduleId: s.scheduleId, date: "" })
+                          }
+                          disabled={isPending}
+                          className={cn(
+                            "p-2 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                            showPausePicker
+                              ? "text-amber-400 bg-amber-400/10"
+                              : "text-muted-foreground hover:text-amber-400 hover:bg-amber-400/10"
+                          )}
+                          title="Pause schedule"
+                          aria-label="Pause schedule"
+                        >
+                          <PauseCircle className="h-4 w-4" />
+                        </button>
+                      )}
                       <button
-                        onClick={() =>
-                          setPauseState(showPausePicker ? null : { scheduleId: s.scheduleId, date: "" })
-                        }
-                        disabled={isPending}
-                        className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-amber-400 hover:bg-amber-400/10 transition-colors ml-auto"
+                        onClick={() => handleDelete(s)}
+                        className="p-2 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-400/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        title="Delete schedule"
+                        aria-label="Delete schedule"
                       >
-                        <PauseCircle className="h-4 w-4" />Pause
+                        <Trash2 className="h-4 w-4" />
                       </button>
-                    )}
-
-                    <button
-                      onClick={() => handleDelete(s)}
-                      className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-red-400 hover:bg-red-400/10 transition-colors"
-                    >
-                      <Trash2 className="h-4 w-4" />Delete
-                    </button>
+                    </div>
                   </div>
 
+                  {/* Meta strip: bullet-separated, wraps naturally on phone widths.
+                      Primary "Next run" is pulled right so it's always findable. */}
+                  <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                    {metaParts.map((part, i) => (
+                      <React.Fragment key={i}>
+                        {i > 0 && <span className="text-muted-foreground/40" aria-hidden>·</span>}
+                        {part}
+                      </React.Fragment>
+                    ))}
+                    <span className="text-muted-foreground/40" aria-hidden>·</span>
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-1 tabular-nums",
+                        imminent && "font-semibold text-emerald-400"
+                      )}
+                    >
+                      {imminent && (
+                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" aria-hidden />
+                      )}
+                      Next: {formatRelative(s.nextRunAt, now)}
+                    </span>
+                    {isPaused && s.pauseReason && (
+                      <>
+                        <span className="text-muted-foreground/40" aria-hidden>·</span>
+                        <span className="italic">{s.pauseReason}</span>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Inline pause date picker */}
                   <AnimatePresence>
                     {showPausePicker && (
                       <motion.div
@@ -705,7 +755,7 @@ export default function SchedulesPage() {
                         transition={{ duration: 0.18, ease: [0.25, 1, 0.5, 1] }}
                         className="overflow-hidden"
                       >
-                        <div className="flex items-center gap-2 pt-2">
+                        <div className="mt-3 flex items-center gap-2 border-t border-border pt-3">
                           <input
                             type="date"
                             className="flex-1 rounded-lg border border-border bg-transparent px-2.5 py-1.5 text-xs tabular-nums text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
