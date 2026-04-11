@@ -33,11 +33,11 @@ const DEMO_WINDOWS: WindowSummary[] = [
 
 function WindowStatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
-    ready: "bg-emerald-500/10 text-emerald-500",
-    analyzing: "bg-blue-500/10 text-blue-500",
-    transcribed: "bg-blue-500/10 text-blue-500",
-    pending: "bg-muted text-muted-foreground",
-    failed: "bg-red-500/10 text-red-400",
+    ready: "bg-status-online/10 text-status-online",
+    analyzing: "bg-status-streaming/10 text-status-streaming",
+    transcribed: "bg-status-streaming/10 text-status-streaming",
+    pending: "bg-status-pending/10 text-status-pending",
+    failed: "bg-status-offline/10 text-status-offline",
     expired: "bg-muted text-muted-foreground line-through",
   };
   return (
@@ -163,13 +163,12 @@ export default function DeviceDetailPage() {
       {/* Device header */}
       <div
         className="mb-6 flex items-center justify-between"
-        style={{ viewTransitionName: `device-${deviceId}` }}
       >
         <div>
           <h1 className="text-2xl font-bold text-foreground">{device.label || "Unnamed Device"}</h1>
           <p className="mt-1 text-sm text-muted-foreground">{device.location || device.device_id}</p>
         </div>
-        <span className={`text-sm font-medium capitalize ${device.status === "online" || device.status === "streaming" ? "text-primary" : device.status === "offline" ? "text-red-400" : "text-muted-foreground"}`}>
+        <span className={`text-sm font-medium capitalize ${device.status === "online" || device.status === "streaming" ? "text-status-online" : device.status === "offline" ? "text-status-offline" : device.status === "pending" ? "text-status-pending" : "text-muted-foreground"}`}>
           {device.status}
         </span>
       </div>
@@ -208,19 +207,19 @@ export default function DeviceDetailPage() {
                   <span
                     className={`h-2 w-2 rounded-full shrink-0 transition-colors duration-300 ${
                       listenState === "connected"
-                        ? "bg-emerald-500 animate-pulse"
+                        ? "bg-status-online animate-pulse"
                         : listenState === "connecting"
-                          ? "bg-amber-400 animate-pulse"
+                          ? "bg-status-pending animate-pulse"
                           : listenState === "error"
-                            ? "bg-red-400"
+                            ? "bg-status-offline"
                             : device.status === "offline"
-                              ? "bg-red-500/60"
+                              ? "bg-status-offline/60"
                               : "bg-muted-foreground/40"
                     }`}
                   />
                   <span className={`text-sm ${
-                    listenState === "connected" ? "text-emerald-400 font-medium" :
-                    listenState === "error" ? "text-red-400" :
+                    listenState === "connected" ? "text-status-online font-medium" :
+                    listenState === "error" ? "text-status-offline" :
                     "text-muted-foreground"
                   }`}>
                     {listenState === "connected"
@@ -278,7 +277,7 @@ export default function DeviceDetailPage() {
                     disabled={device.status === "offline" && listenState === "idle"}
                     className={`flex h-10 w-10 items-center justify-center rounded-full transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-95 ${
                       listenState === "connected"
-                        ? "bg-red-500/90 text-white hover:bg-red-500"
+                        ? "bg-status-offline/90 text-white hover:bg-status-offline"
                         : "bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed"
                     }`}
                     aria-label={listenState === "connected" || listenState === "connecting" ? "Stop listening" : "Start listening"}
@@ -349,10 +348,10 @@ export default function DeviceDetailPage() {
         {tab === "report" && (
           <motion.div key="report" role="tabpanel" id="panel-report" aria-labelledby="report" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
             {selectedWindow ? (
-              <div className="space-y-4">
+              <div className="rounded-xl border border-border bg-card/50 overflow-hidden">
                 {/* Window header */}
-                <div className="rounded-xl border border-border bg-card/50 p-5">
-                  <div className="flex items-center justify-between mb-3">
+                <div className="px-5 pt-5 pb-4 border-b border-border/50">
+                  <div className="flex items-center justify-between mb-1">
                     <h3 className="text-sm font-semibold text-foreground">Window Report</h3>
                     <WindowStatusBadge status={selectedWindow.status} />
                   </div>
@@ -367,10 +366,10 @@ export default function DeviceDetailPage() {
                     <p className="text-sm">Loading report…</p>
                   </div>
                 ) : windowDetail ? (
-                  <>
+                  <div className="divide-y divide-border/50">
                     {/* Summary */}
                     {windowDetail.summary && (
-                      <div className="rounded-xl border border-border bg-card/50 p-5">
+                      <div className="px-5 py-4">
                         <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Summary</h4>
                         <p className="text-sm text-foreground leading-relaxed">{windowDetail.summary}</p>
                       </div>
@@ -378,7 +377,7 @@ export default function DeviceDetailPage() {
 
                     {/* Highlights */}
                     {windowDetail.highlights.length > 0 && (
-                      <div className="rounded-xl border border-border bg-card/50 p-5">
+                      <div className="px-5 py-4">
                         <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">Highlights</h4>
                         <div className="space-y-2">
                           {windowDetail.highlights.map((h, i) => (
@@ -394,13 +393,13 @@ export default function DeviceDetailPage() {
 
                     {/* Flags */}
                     {windowDetail.flags.length > 0 && (
-                      <div className="rounded-xl border border-border bg-card/50 p-5">
+                      <div className="px-5 py-4">
                         <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">Flags</h4>
                         <div className="space-y-2">
                           {windowDetail.flags.map((f, i) => (
                             <div key={i} className={`rounded-lg border p-3 text-sm ${
-                              f.severity === "critical" ? "border-red-900 bg-red-950/30 text-red-400" :
-                              f.severity === "warning" ? "border-amber-900 bg-amber-950/30 text-amber-400" :
+                              f.severity === "critical" ? "border-status-offline/30 bg-status-offline/5 text-status-offline" :
+                              f.severity === "warning" ? "border-status-pending/30 bg-status-pending/5 text-status-pending" :
                               "border-border bg-card/50 text-muted-foreground"
                             }`}>
                               <div className="flex items-center gap-2">
@@ -416,7 +415,7 @@ export default function DeviceDetailPage() {
 
                     {/* Utterances */}
                     {windowDetail.utterances.length > 0 && (
-                      <div className="rounded-xl border border-border bg-card/50 p-5">
+                      <div className="px-5 py-4">
                         <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">Transcript</h4>
                         <div className="space-y-2">
                           {windowDetail.utterances.map((u, i) => (
@@ -436,7 +435,7 @@ export default function DeviceDetailPage() {
                         <p className="text-sm">No report data available yet</p>
                       </div>
                     )}
-                  </>
+                  </div>
                 ) : (
                   <div className="flex h-32 flex-col items-center justify-center gap-2 text-muted-foreground">
                     <FileText className="h-6 w-6" />

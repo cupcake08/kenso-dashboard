@@ -104,6 +104,22 @@
   }
 }
 
+/* Thin scrollbar for lists */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(215 14% 20%) transparent;
+}
+.scrollbar-thin::-webkit-scrollbar {
+  width: 4px;
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: hsl(215 14% 20%);
+  border-radius: 2px;
+}
+
 /* Waveform drift for login brand side */
 @keyframes waveform-drift {
   from { transform: translateX(0); }

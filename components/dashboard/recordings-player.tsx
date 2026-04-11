@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, memo } from "react";
 import { motion } from "framer-motion";
 import { Play, Pause, SkipBack, SkipForward, Loader2, ChevronLeft, ChevronRight, Disc3 } from "lucide-react";
 import { useRecordingsPlayer, type Segment } from "@/hooks/use-recordings-player";
@@ -94,14 +94,16 @@ function SegmentList({ segments, currentSegmentIdx, onSelect }: {
   onSelect: (idx: number) => void;
 }) {
   return (
-    <div className="max-h-64 overflow-y-auto space-y-0.5 scrollbar-thin">
+    <div role="listbox" aria-label="Recording segments" className="max-h-64 overflow-y-auto space-y-0.5 scrollbar-thin">
       {segments.map((seg, i) => {
         const isActive = i === currentSegmentIdx;
         return (
           <button
             key={seg.segment_id}
+            role="option"
+            aria-selected={isActive}
             onClick={() => onSelect(i)}
-            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${
+            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
               isActive
                 ? "bg-primary/10 text-primary"
                 : "text-muted-foreground hover:bg-muted/30 hover:text-foreground"
@@ -128,7 +130,7 @@ function SegmentList({ segments, currentSegmentIdx, onSelect }: {
   );
 }
 
-export function RecordingsPlayer({ deviceId }: { deviceId: string }) {
+export const RecordingsPlayer = memo(function RecordingsPlayer({ deviceId }: { deviceId: string }) {
   const { segments, state, toggle, seekTo, skip, cycleSpeed, loadDate, play } = useRecordingsPlayer(deviceId);
 
   // Date navigation
@@ -166,16 +168,19 @@ export function RecordingsPlayer({ deviceId }: { deviceId: string }) {
             if (idx < dates.length - 1) setSelectedDate(dates[idx + 1]);
           }}
           disabled={selectedDate === dates[dates.length - 1]}
+          aria-label="Previous day"
           className="h-8 w-8 p-0"
         >
           <ChevronLeft className="h-4 w-4" />
         </Button>
-        <div className="flex gap-1.5">
+        <div className="flex gap-1.5" role="group" aria-label="Select date">
           {dates.map((d) => (
             <button
               key={d}
+              type="button"
               onClick={() => setSelectedDate(d)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              aria-pressed={selectedDate === d}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                 selectedDate === d
                   ? "bg-primary/10 text-primary border border-primary/20"
                   : "text-muted-foreground hover:text-foreground hover:bg-muted/30 border border-transparent"
@@ -193,6 +198,7 @@ export function RecordingsPlayer({ deviceId }: { deviceId: string }) {
             if (idx > 0) setSelectedDate(dates[idx - 1]);
           }}
           disabled={selectedDate === dates[0]}
+          aria-label="Next day"
           className="h-8 w-8 p-0"
         >
           <ChevronRight className="h-4 w-4" />
@@ -263,7 +269,8 @@ export function RecordingsPlayer({ deviceId }: { deviceId: string }) {
               {/* Speed */}
               <button
                 onClick={cycleSpeed}
-                className="px-2 py-1 rounded text-xs font-semibold tabular-nums text-muted-foreground hover:text-foreground transition-colors"
+                className="px-2 py-1 rounded text-xs font-semibold tabular-nums text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label={`Playback speed: ${state.speed}x`}
               >
                 {state.speed}x
               </button>
@@ -271,7 +278,7 @@ export function RecordingsPlayer({ deviceId }: { deviceId: string }) {
               {/* Skip back */}
               <button
                 onClick={() => skip(-15)}
-                className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors"
+                className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 aria-label="Skip back 15 seconds"
               >
                 <SkipBack className="h-4 w-4" />
@@ -293,7 +300,7 @@ export function RecordingsPlayer({ deviceId }: { deviceId: string }) {
               {/* Skip forward */}
               <button
                 onClick={() => skip(15)}
-                className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors"
+                className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 aria-label="Skip forward 15 seconds"
               >
                 <SkipForward className="h-4 w-4" />
@@ -321,4 +328,4 @@ export function RecordingsPlayer({ deviceId }: { deviceId: string }) {
       )}
     </div>
   );
-}
+});

@@ -9,6 +9,16 @@ interface WaveformProps {
   className?: string;
 }
 
+function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+  s /= 100; l /= 100;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) => {
+    const k = (n + h / 30) % 12;
+    return l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+  };
+  return [Math.round(f(0) * 255), Math.round(f(8) * 255), Math.round(f(4) * 255)];
+}
+
 /**
  * Real-time audio waveform driven by actual frequency data from WebRTC AnalyserNode.
  * When no frequency data is available, shows a flat idle state.
@@ -20,11 +30,26 @@ export function Waveform({ playing, frequencyDataRef, barCount = 48, className }
   const barsRef = useRef<Float32Array>(new Float32Array(barCount));
   const sizeRef = useRef({ w: 0, h: 0 });
   const prefersReducedMotion = useRef(false);
+  const colorRef = useRef({ active: [52, 211, 153], idle: [148, 163, 184] });
 
   // Check reduced motion preference once
   useEffect(() => {
     if (typeof window !== "undefined") {
       prefersReducedMotion.current = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      // Read theme colors from CSS tokens so canvas stays in sync with theme
+      const style = getComputedStyle(document.documentElement);
+      const parseRGB = (hsl: string) => {
+        // Fallback if oklch or unsupported format
+        const m = hsl.match(/(\d+)\s+(\d+)%\s+(\d+)%/);
+        if (m) { const [_, h, s, l] = m.map(Number); return hslToRgb(h, s, l); }
+        return null;
+      };
+      const activeStr = style.getPropertyValue("--status-online").trim();
+      const idleStr = style.getPropertyValue("--muted-foreground").trim();
+      const active = parseRGB(activeStr);
+      const idle = parseRGB(idleStr);
+      if (active) colorRef.current.active = active;
+      if (idle) colorRef.current.idle = idle;
     }
   }, []);
 
@@ -93,10 +118,8 @@ export function Waveform({ playing, frequencyDataRef, barCount = 48, className }
       const r = Math.min(barW / 2, barH / 2, 2);
 
       const alpha = playing ? 0.4 + bars[i] * 0.6 : 0.15;
-      // Emerald when playing, muted neutral when idle — fallback for browsers without oklch
-      ctx.fillStyle = playing
-        ? `rgba(52, 211, 153, ${alpha})`
-        : `rgba(148, 163, 184, ${alpha})`;
+      const c = playing ? colorRef.current.active : colorRef.current.idle;
+      ctx.fillStyle = `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${alpha})`;
 
       ctx.beginPath();
       if (ctx.roundRect) {
