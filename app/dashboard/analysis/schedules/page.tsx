@@ -4,6 +4,7 @@ import { Loader2, ArrowLeft, Calendar, Plus, Pencil, PauseCircle, PlayCircle, Tr
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { listSchedules, pauseSchedule, resumeSchedule, createSchedule, apiFetch } from "@/lib/api";
+import { cronToHuman } from "@/lib/cron";
 import type { AnalysisSchedule } from "@/types/analysis";
 import { BadgeVariant } from "@/components/ui/badge-variant";
 import { Button } from "@/components/ui/button";
@@ -54,29 +55,7 @@ const DEMO_SCHEDULES: AnalysisSchedule[] = [
   },
 ];
 
-// Human-readable cron
-function cronToHuman(cron: string): string {
-  const parts = cron.split(" ");
-  if (parts.length !== 5) return cron;
-  const minute = parseInt(parts[0]);
-  const hour = parseInt(parts[1]);
-  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const dows = parts[4];
-  let dayStr: string;
-  if (dows === "*") {
-    dayStr = "Daily";
-  } else if (dows === "1-5") {
-    dayStr = "Mon\u2013Fri";
-  } else if (dows === "1-6") {
-    dayStr = "Mon\u2013Sat";
-  } else {
-    dayStr = dows.split(",").map((d) => dayNames[parseInt(d)] || d).join(", ");
-  }
-  const h12 = hour % 12 || 12;
-  const ampm = hour < 12 ? "AM" : "PM";
-  const timeStr = `${h12}:${minute.toString().padStart(2, "0")} ${ampm}`;
-  return `${dayStr} at ${timeStr}`;
-}
+// cronToHuman is imported from @/lib/cron
 
 function formatRelative(iso: string | undefined): string {
   if (!iso) return "—";
@@ -204,6 +183,7 @@ export default function SchedulesPage() {
         shop_ids: data.shop_ids,
         schedule_type: data.schedule_type,
         recurrence_rule: data.recurrence_rule,
+        analysis_window_hours: data.analysis_window_hours,
         analysis_start_time: data.analysis_start_time,
         analysis_end_time: data.analysis_end_time,
         timezone: data.timezone,
@@ -212,14 +192,15 @@ export default function SchedulesPage() {
       });
       loadSchedules();
     } else if (editingSchedule) {
+      // Do NOT send template_id — backend UpdateSchedule does not accept it
       await apiFetch(`/analysis/schedules/${editingSchedule.scheduleId}`, {
         method: "PUT",
         body: JSON.stringify({
-          template_id: data.template_id,
           mic_ids: data.mic_ids,
           shop_ids: data.shop_ids,
           schedule_type: data.schedule_type,
           recurrence_rule: data.recurrence_rule,
+          analysis_window_hours: data.analysis_window_hours,
           analysis_start_time: data.analysis_start_time,
           analysis_end_time: data.analysis_end_time,
           timezone: data.timezone,
@@ -236,7 +217,8 @@ export default function SchedulesPage() {
     if (!pauseState || pauseState.scheduleId !== s.scheduleId || !pauseState.date) return;
     setActionPending(s.scheduleId);
     try {
-      const until = new Date(pauseState.date).toISOString();
+      // Parse as end-of-day in local timezone to avoid UTC midnight rejection
+      const until = new Date(pauseState.date + "T23:59:59").toISOString();
       if (IS_DEMO) {
         await new Promise((r) => setTimeout(r, 400));
         setSchedules((prev) =>
