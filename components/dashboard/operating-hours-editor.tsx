@@ -199,6 +199,7 @@ export function OperatingHoursEditor({
   const [pausing, setPausing] = useState(false);
   const [resuming, setResuming] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const isPaused = !!(initial?.paused_until && new Date(initial.paused_until) > new Date());
 
@@ -240,23 +241,29 @@ export function OperatingHoursEditor({
 
   async function handlePause() {
     if (!pauseDate) return;
+    setActionError(null);
     setPausing(true);
     try {
-      await onPause(new Date(pauseDate).toISOString(), pauseReason);
+      // Parse as end-of-day in local timezone to avoid UTC midnight rejection
+      const pausedUntilIso = new Date(pauseDate + "T23:59:59").toISOString();
+      await onPause(pausedUntilIso, pauseReason);
       setShowPauseForm(false);
-    } catch {
-      // ignore
+      setPauseDate("");
+      setPauseReason("");
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to pause");
     } finally {
       setPausing(false);
     }
   }
 
   async function handleResume() {
+    setActionError(null);
     setResuming(true);
     try {
       await onResume();
-    } catch {
-      // ignore
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to resume");
     } finally {
       setResuming(false);
     }
@@ -473,7 +480,12 @@ export function OperatingHoursEditor({
           </div>
         )}
 
-        {/* Error */}
+        {/* Pause/Resume error */}
+        {actionError && (
+          <p className="text-xs text-red-400">{actionError}</p>
+        )}
+
+        {/* Save error */}
         {saveError && (
           <p className="text-xs text-red-400">{saveError}</p>
         )}
