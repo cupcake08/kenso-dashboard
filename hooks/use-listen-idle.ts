@@ -22,6 +22,16 @@ export type IdleState = {
   idleClosedReason: IdleClosedReason;
 };
 
+// Used by acknowledge / dismiss / countdown-expired / visibility-hidden to
+// clear the takeover UI. idleClosedReason is intentionally preserved so the
+// caller can set it separately (or leave it null on ack).
+const clearPromptFields = (prev: IdleState): IdleState => ({
+  ...prev,
+  promptActive: false,
+  deadlineUnixMs: null,
+  countdownSeconds: null,
+});
+
 /**
  * Listens for the server's idle keepalive prompt and owns the UX state around
  * it: a 30-second countdown, acknowledge/dismiss actions, and an independent
@@ -115,13 +125,7 @@ export function useListenIdle(
         // Countdown expired — client proactively closes.
         const client = clientRef.current;
         client?.sendClientClose("prompt_ignored");
-        setState((prev) => ({
-          ...prev,
-          promptActive: false,
-          deadlineUnixMs: null,
-          countdownSeconds: null,
-          idleClosedReason: "idle_timeout",
-        }));
+        setState((prev) => ({ ...clearPromptFields(prev), idleClosedReason: "idle_timeout" }));
         return;
       }
       setState((prev) => (prev.countdownSeconds === remaining ? prev : { ...prev, countdownSeconds: remaining }));
@@ -151,13 +155,7 @@ export function useListenIdle(
           const client = clientRef.current;
           client?.sendClientClose("hidden_too_long");
           client?.disconnect();
-          setState((prev) => ({
-            ...prev,
-            promptActive: false,
-            deadlineUnixMs: null,
-            countdownSeconds: null,
-            idleClosedReason: "hidden_too_long",
-          }));
+          setState((prev) => ({ ...clearPromptFields(prev), idleClosedReason: "hidden_too_long" }));
         }, HIDDEN_GRACE_MS);
       } else {
         if (hiddenTimeoutRef.current) {
@@ -181,24 +179,14 @@ export function useListenIdle(
   const acknowledge = useCallback(() => {
     const client = clientRef.current;
     client?.sendKeepaliveAck();
-    setState((prev) => ({
-      ...prev,
-      promptActive: false,
-      deadlineUnixMs: null,
-      countdownSeconds: null,
-    }));
+    setState(clearPromptFields);
   }, [clientRef]);
 
   const dismiss = useCallback(() => {
     const client = clientRef.current;
     client?.sendClientClose("user_declined");
     client?.disconnect();
-    setState((prev) => ({
-      ...prev,
-      promptActive: false,
-      deadlineUnixMs: null,
-      countdownSeconds: null,
-    }));
+    setState(clearPromptFields);
   }, [clientRef]);
 
   return { state, acknowledge, dismiss };

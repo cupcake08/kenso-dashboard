@@ -19,7 +19,7 @@ interface ListenClientOpts {
   onIdleClose?: (reason: "idle_timeout") => void;
 }
 
-export type ListenClientCloseReason =
+type ListenClientCloseReason =
   | "user_stopped"
   | "user_declined"
   | "prompt_ignored"

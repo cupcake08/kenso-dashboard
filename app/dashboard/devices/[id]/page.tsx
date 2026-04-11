@@ -16,6 +16,7 @@ import { useListenLive } from "@/hooks/use-listen";
 import { useListenIdle } from "@/hooks/use-listen-idle";
 import { LiveListenIdlePrompt } from "@/components/dashboard/live-listen-idle-prompt";
 import { RecordingsPlayer } from "@/components/dashboard/recordings-player";
+import { Button } from "@/components/ui/button";
 
 type Tab = "listen" | "recordings" | "recent" | "report";
 
@@ -213,13 +214,7 @@ export default function DeviceDetailPage() {
                       ? "Stream closed — you were away from this tab"
                       : "Stream closed — no activity detected"}
                   </p>
-                  <button
-                    type="button"
-                    onClick={toggleListen}
-                    className="inline-flex items-center justify-center rounded-md bg-foreground px-4 py-2 text-[13px] font-medium text-background transition-colors hover:bg-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                  >
-                    Start listening again
-                  </button>
+                  <Button onClick={toggleListen}>Start listening again</Button>
                 </div>
               ) : (
                 <>
