@@ -5,6 +5,7 @@ import { Loader2, Check, Cpu, Zap, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { listTemplates, estimateCredits, apiFetch, normalizeDevice } from "@/lib/api";
+import { parseCron } from "@/lib/cron";
 import type { AnalysisTemplate, AnalysisSchedule, EstimateResult } from "@/types/analysis";
 import type { Device, RawDevice } from "@/types/api";
 
@@ -53,6 +54,7 @@ export interface CreateSchedulePayload {
   shop_ids?: string[];
   schedule_type: "recurring" | "one_time";
   recurrence_rule: string;
+  analysis_window_hours: number;
   analysis_start_time: string;
   analysis_end_time: string;
   timezone: string;
@@ -71,41 +73,7 @@ function buildCron(days: number[], hour: number, minute: number): string {
   return `${minute} ${hour} * * ${dayStr}`;
 }
 
-function computeNextRun(days: number[], hour: number, minute: number): number {
-  const now = new Date();
-  const candidates: Date[] = days.map((dow) => {
-    const d = new Date(now);
-    const currentDow = d.getDay(); // 0=Sun
-    let diff = dow - currentDow;
-    if (diff < 0) diff += 7;
-    d.setDate(d.getDate() + diff);
-    d.setHours(hour, minute, 0, 0);
-    if (d <= now) d.setDate(d.getDate() + 7);
-    return d;
-  });
-  if (candidates.length === 0) return Math.floor(now.getTime() / 1000) + 86400;
-  const nearest = candidates.reduce((a, b) => (a < b ? a : b));
-  return Math.floor(nearest.getTime() / 1000);
-}
-
-function parseCron(cron: string): { days: number[]; hour: number; minute: number } {
-  const parts = cron.split(" ");
-  if (parts.length !== 5) return { days: [1, 2, 3, 4, 5], hour: 9, minute: 0 };
-  const minute = parseInt(parts[0]) || 0;
-  const hour = parseInt(parts[1]) || 9;
-  const dowStr = parts[4];
-  let days: number[] = [];
-  if (dowStr === "*") {
-    days = [0, 1, 2, 3, 4, 5, 6];
-  } else if (dowStr === "1-5") {
-    days = [1, 2, 3, 4, 5];
-  } else if (dowStr === "1-6") {
-    days = [1, 2, 3, 4, 5, 6];
-  } else {
-    days = dowStr.split(",").map((d) => parseInt(d)).filter((n) => !isNaN(n));
-  }
-  return { days, hour, minute };
-}
+// parseCron is imported from @/lib/cron
 
 // Group devices by shop_id
 function groupByShop(devices: Device[]): Map<string, Device[]> {
@@ -204,6 +172,7 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
 
   // Run credit estimate when key fields are set
   useEffect(() => {
+    let cancelled = false;
     const mics = effectiveMicIds();
     if (!templateId || mics.length === 0 || !analysisStart || !analysisEnd) {
       setEstimate(null);
@@ -220,30 +189,40 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
     if (IS_DEMO) {
       const durMin = (endTs.getTime() - startTs.getTime()) / 60000;
       const tmpl = templates.find((t) => t.templateId === templateId);
-      setEstimate({
-        estimatedCredits: Math.round(durMin * mics.length * (tmpl?.complexityMultiplier ?? 1) * 0.5),
-        estimatedDurationMin: durMin,
-        totalAudioDurationMs: durMin * 60000,
-        hasAudio: true,
-      });
-      return;
+      if (!cancelled) {
+        setEstimate({
+          estimatedCredits: Math.round(durMin * mics.length * (tmpl?.complexityMultiplier ?? 1) * 0.5),
+          estimatedDurationMin: durMin,
+          totalAudioDurationMs: durMin * 60000,
+          hasAudio: true,
+        });
+      }
+      return () => { cancelled = true; };
     }
 
-    const timer = setTimeout(() => {
+    const timer = setTimeout(async () => {
+      if (cancelled) return;
       setEstimating(true);
-      estimateCredits({
-        template_id: templateId,
-        mic_ids: mics,
-        shop_ids: targetMode === "shop" ? selectedShopIds : [],
-        time_range_start_unix: Math.floor(startTs.getTime() / 1000),
-        time_range_end_unix: Math.floor(endTs.getTime() / 1000),
-      })
-        .then(setEstimate)
-        .catch(() => setEstimate(null))
-        .finally(() => setEstimating(false));
+      try {
+        const result = await estimateCredits({
+          template_id: templateId,
+          mic_ids: mics,
+          shop_ids: targetMode === "shop" ? selectedShopIds : [],
+          time_range_start_unix: Math.floor(startTs.getTime() / 1000),
+          time_range_end_unix: Math.floor(endTs.getTime() / 1000),
+        });
+        if (!cancelled) setEstimate(result);
+      } catch {
+        if (!cancelled) setEstimate(null);
+      } finally {
+        if (!cancelled) setEstimating(false);
+      }
     }, 600);
 
-    return () => clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [templateId, analysisStart, analysisEnd, effectiveMicIds, templates, targetMode, selectedShopIds]);
 
   const shopGroups = groupByShop(devices);
@@ -277,16 +256,25 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
 
     if (scheduleType === "recurring") {
       if (selectedDays.length === 0) return null;
-      const hourStr = String(triggerHour).padStart(2, "0");
-      const minuteStr = String(triggerMinute).padStart(2, "0");
       recurrenceRule = buildCron(selectedDays, triggerHour, triggerMinute);
-      nextRunUnix = computeNextRun(selectedDays, triggerHour, triggerMinute);
-      void hourStr; void minuteStr;
+      // For recurring schedules, send current time so the backend's own computeNextRun
+      // (which correctly uses the schedule's timezone) will compute the real next_run.
+      // TODO: timezone-aware client computation to send precise next_run_unix
+      nextRunUnix = Math.floor(Date.now() / 1000);
     } else {
       if (!oneTimeDate || !oneTimeTime) return null;
       recurrenceRule = `once:${oneTimeDate}T${oneTimeTime}`;
       const dt = new Date(`${oneTimeDate}T${oneTimeTime}:00`);
       nextRunUnix = Math.floor(dt.getTime() / 1000);
+    }
+
+    // Compute analysis_window_hours from start/end times
+    let analysisWindowHours = 8;
+    if (analysisStart && analysisEnd) {
+      const [sh] = analysisStart.split(":").map(Number);
+      const [eh] = analysisEnd.split(":").map(Number);
+      const hours = eh - sh;
+      if (hours > 0) analysisWindowHours = Math.ceil(hours);
     }
 
     return {
@@ -295,6 +283,7 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
       shop_ids: targetMode === "shop" ? selectedShopIds : [],
       schedule_type: scheduleType,
       recurrence_rule: recurrenceRule,
+      analysis_window_hours: analysisWindowHours,
       analysis_start_time: analysisStart,
       analysis_end_time: analysisEnd,
       timezone,
@@ -341,6 +330,13 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
             Loading templates...
+          </div>
+        ) : isEdit ? (
+          <div>
+            <p className="text-sm text-foreground py-2.5 px-3 rounded-xl border border-border bg-muted/20">
+              {templates.find((t) => t.templateId === templateId)?.name ?? templateId}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">Template cannot be changed after creation</p>
           </div>
         ) : (
           <div className="relative">
