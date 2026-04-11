@@ -124,8 +124,13 @@ export class ListenClient {
         this.cleanup();
         break;
       case "listen_keepalive_prompt": {
-        const deadline = typeof msg.deadline_unix_ms === "number" ? msg.deadline_unix_ms : Date.now();
-        this.opts.onIdlePrompt?.(deadline);
+        // Ignore malformed prompts rather than firing with Date.now() as
+        // a fallback — a zero-countdown prompt would silently self-destruct.
+        if (typeof msg.deadline_unix_ms !== "number") {
+          console.warn("[Listen] keepalive_prompt missing deadline_unix_ms, ignoring:", msg);
+          break;
+        }
+        this.opts.onIdlePrompt?.(msg.deadline_unix_ms);
         break;
       }
     }
@@ -257,14 +262,18 @@ export class ListenClient {
     this.opts.onIdleClose = onIdleClose;
   }
 
-  disconnect(): void {
+  /**
+   * Disconnect with an optional telemetry reason for the server log.
+   * Defaults to "user_stopped" for the normal Stop-button flow. The
+   * dismiss/prompt path passes "user_declined" so the server can
+   * distinguish a user who said "no" from one who just clicked Stop.
+   * Best-effort — send may fail if WS is already closing, that's fine.
+   */
+  disconnect(reason: ListenClientCloseReason = "user_stopped"): void {
     if (this.disposed) return;
-    // Telemetry: tell the server this was an intentional user stop, not a
-    // dropped connection. Best-effort — send may fail if WS is already
-    // closing, that's fine.
     try {
       if (this.ws?.readyState === WebSocket.OPEN) {
-        this.sendClientClose("user_stopped");
+        this.sendClientClose(reason);
       }
     } catch { /* ignore */ }
     this.disposed = true;

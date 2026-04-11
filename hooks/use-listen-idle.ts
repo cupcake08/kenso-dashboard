@@ -183,9 +183,9 @@ export function useListenIdle(
   }, [clientRef]);
 
   const dismiss = useCallback(() => {
-    const client = clientRef.current;
-    client?.sendClientClose("user_declined");
-    client?.disconnect();
+    // disconnect() sends one close frame with our chosen reason — no need
+    // to call sendClientClose separately and risk a double-send.
+    clientRef.current?.disconnect("user_declined");
     setState(clearPromptFields);
   }, [clientRef]);
 
