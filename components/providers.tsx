@@ -26,12 +26,12 @@ export function Providers({ children }: { children: React.ReactNode }) {
         unsubscribe = onIdTokenChanged(auth, (user) => {
           if (user && user.emailVerified) {
             user.getIdToken().then((token) => setAuthCookie(token));
-          } else if (!user) {
+          } else {
+            // Signed out OR unverified: clear cookie so middleware blocks
+            // dashboard access. The verify-email page sets its own cookie
+            // after verification completes via setAuthCookie().
             clearAuthCookie();
           }
-          // Unverified user: don't set cookie, don't clear it (they may be
-          // on the verify-email page where we intentionally avoid setting it
-          // until verification completes).
         });
       });
     });

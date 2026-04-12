@@ -7,7 +7,7 @@ import { apiFetch, normalizeCredits } from "@/lib/api";
 import type { Transaction, RawCreditsResponse } from "@/types/api";
 import { useApi } from "@/hooks/use-api";
 import { Button } from "@/components/ui/button";
-import { Skeleton, TransactionSkeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const DEMO_BALANCE = 24850;
 const DEMO_TRANSACTIONS: Transaction[] = [
