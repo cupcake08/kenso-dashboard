@@ -85,20 +85,17 @@ export default function AnalysisPage() {
   );
 
   // SWR: jobs
-  const { data: jobs = [] } = useApi<AnalysisJob[]>(
+  const { data: jobs = [], mutate: mutateJobs } = useApi<AnalysisJob[]>(
     IS_DEMO ? null : "/_analysis_jobs",
     async () => listJobs(),
     { fallbackData: IS_DEMO ? DEMO_JOBS : undefined },
   );
 
-  // SWR: credits (shared cache key with usage page)
-  const { data: creditsData } = useApi<{ balance: number; subscriptionState?: string; trialEndsAt?: string }>(
+  // SWR: credits — same cache key + return type as usage page so both share one cache entry
+  const { data: creditsData } = useApi<ReturnType<typeof normalizeCredits>>(
     IS_DEMO ? null : "/credits",
-    async (url) => {
-      const raw = await apiFetch<RawCreditsResponse>(url);
-      return normalizeCredits(raw);
-    },
-    { fallbackData: IS_DEMO ? { balance: 24850, subscriptionState: "trialing", trialEndsAt: new Date(Date.now() + 14 * 86400000).toISOString() } : undefined },
+    async (url) => normalizeCredits(await apiFetch<RawCreditsResponse>(url)),
+    { fallbackData: IS_DEMO ? { balance: 24850, subscriptionState: "trialing", trialEndsAt: new Date(Date.now() + 14 * 86400000).toISOString(), transactions: [] } : undefined },
   );
 
   const credits = creditsData?.balance ?? 0;
@@ -115,7 +112,7 @@ export default function AnalysisPage() {
 
   function handleJobCreated(_job: AnalysisJob) {
     // Revalidate jobs list to pick up the new job
-    mutateAll();
+    mutateJobs();
   }
 
   const visibleJobs = jobs.slice(0, showJobs);
