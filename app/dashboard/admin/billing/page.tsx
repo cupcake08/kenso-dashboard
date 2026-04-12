@@ -336,7 +336,7 @@ function CompanyDetail({ companyId, companyName, onRefresh }: {
                       </div>
                     </div>
                     <span className="text-sm font-medium text-foreground tabular-nums shrink-0">
-                      {inv.total_inr}
+                      {"\u20B9"}{inv.total_inr || "0.00"}
                     </span>
                     {inv.status === "issued" && (
                       <Button

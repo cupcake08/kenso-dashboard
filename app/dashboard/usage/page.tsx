@@ -133,12 +133,15 @@ export default function UsagePage() {
     }
     Promise.all([
       apiFetch<RawCreditsResponse>("/credits").then(normalizeCredits),
-      apiFetch<Invoice[]>("/billing/invoices").catch(() => [] as Invoice[]),
+      apiFetch<Invoice[]>("/billing/invoices").catch((e) => {
+        console.warn("[usage] invoices fetch failed:", e);
+        return [] as Invoice[];
+      }),
     ])
       .then(([{ balance, transactions }, inv]) => {
         setBalance(balance);
         setTransactions(transactions);
-        setInvoices(inv ?? []);
+        setInvoices(Array.isArray(inv) ? inv : []);
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
@@ -443,7 +446,7 @@ export default function UsagePage() {
                     </div>
                   </div>
                   <p className="text-base font-semibold tabular-nums text-foreground shrink-0">
-                    {inv.total_inr}
+                    {"\u20B9"}{inv.total_inr || "0.00"}
                   </p>
                 </div>
               </div>
