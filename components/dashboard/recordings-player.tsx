@@ -53,6 +53,8 @@ function DayTimeline({ segments, offsets, currentTime, totalDuration, onSeek }: 
   totalDuration: number;
   onSeek: (audioSeconds: number) => void;
 }) {
+  const [hoverInfo, setHoverInfo] = useState<{ pct: number; label: string } | null>(null);
+
   if (segments.length < 2) return null;
 
   const firstStart = segments[0].start_time_unix;
@@ -74,6 +76,15 @@ function DayTimeline({ segments, offsets, currentTime, totalDuration, onSeek }: 
       break;
     }
   }
+
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const hoverUnix = firstStart + pct * span;
+    setHoverInfo({ pct: pct * 100, label: formatClockTime(hoverUnix) });
+  }, [firstStart, span]);
+
+  const handleMouseLeave = useCallback(() => setHoverInfo(null), []);
 
   // Click → convert timeline position to audio time → seek
   const handleClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -120,8 +131,19 @@ function DayTimeline({ segments, offsets, currentTime, totalDuration, onSeek }: 
       <div
         className="relative h-7 rounded-lg bg-muted/20 cursor-pointer overflow-hidden"
         onClick={handleClick}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
         aria-hidden="true"
       >
+        {/* Hover time tooltip */}
+        {hoverInfo && (
+          <div
+            className="absolute -top-7 -translate-x-1/2 px-1.5 py-0.5 rounded bg-popover border border-border text-[0.625rem] text-foreground tabular-nums whitespace-nowrap pointer-events-none z-10"
+            style={{ left: `${hoverInfo.pct}%` }}
+          >
+            {hoverInfo.label}
+          </div>
+        )}
         {/* Hour boundary lines */}
         {hourLines.map((pct) => (
           <div
