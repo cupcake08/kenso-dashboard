@@ -161,20 +161,26 @@ export default function DeviceDetailPage() {
 
       {/* Tabs — full-width equal tabs on mobile, shrink-wrap on desktop */}
       <div role="tablist" aria-label="Device sections" className="mb-4 sm:mb-6 flex gap-1 rounded-lg bg-muted p-1 border border-border sm:w-fit">
-        {([["listen", "Listen Live"], ["recordings", "Recordings"], ["recent", "Recent"], ["report", "Report"]] as const).map(([t, label]) => (
+        {([["listen", "Listen Live"], ["recordings", "Recordings"], ["recent", "Recent"], ["report", "Report"]] as const).map(([t, label]) => {
+          const isDisabled = t === "listen" && device.status === "offline";
+          return (
           <button
             key={t}
             role="tab"
             aria-selected={tab === t}
             aria-controls={`panel-${t}`}
-            onClick={() => setTab(t)}
+            disabled={isDisabled}
+            title={isDisabled ? "Device is offline" : undefined}
+            onClick={() => !isDisabled && setTab(t)}
             className={`flex-1 sm:flex-initial px-2 sm:px-4 py-2 sm:py-2.5 rounded-md text-xs sm:text-sm font-medium text-center transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+              isDisabled ? "text-muted-foreground/40 cursor-not-allowed" :
               tab === t ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
             }`}
           >
             {label}
           </button>
-        ))}
+          );
+        })}
       </div>
 
       <AnimatePresence mode="wait">
