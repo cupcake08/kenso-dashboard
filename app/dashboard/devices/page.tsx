@@ -28,7 +28,7 @@ export default function DevicesPage() {
       const raw = await apiFetch<RawDevice[]>(url);
       return raw.map(normalizeDevice);
     },
-    { refreshInterval: 30000, fallbackData: isDemoMode ? DEMO_DEVICES : undefined },
+    { fallbackData: isDemoMode ? DEMO_DEVICES : undefined },
   );
 
   // SWR: company ID for enable/disable actions
