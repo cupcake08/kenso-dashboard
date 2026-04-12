@@ -18,6 +18,223 @@ const CATEGORY_ICONS: Record<string, React.ElementType> = {
 
 const STEPS = ["Template", "Devices", "Time Range", "Notes", "Confirm"] as const;
 
+/* ── Time presets ── */
+
+function toLocalDatetimeString(d: Date): string {
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+const TIME_PRESETS = [
+  { label: "Last 2 hours", hours: 2 },
+  { label: "Last 4 hours", hours: 4 },
+  { label: "Last 8 hours", hours: 8 },
+] as const;
+
+const DAY_PRESETS = [
+  { label: "Today", daysAgo: 0 },
+  { label: "Yesterday", daysAgo: 1 },
+] as const;
+
+const TIME_OPTIONS: string[] = [];
+for (let h = 0; h < 24; h++) {
+  for (const m of [0, 15, 30, 45]) {
+    const hh = h % 12 || 12;
+    const ampm = h < 12 ? "AM" : "PM";
+    TIME_OPTIONS.push(`${hh}:${m.toString().padStart(2, "0")} ${ampm}`);
+  }
+}
+
+function parseTimeOption(timeStr: string, baseDate: Date): Date {
+  const [time, ampm] = timeStr.split(" ");
+  const [hStr, mStr] = time.split(":");
+  let h = parseInt(hStr);
+  const m = parseInt(mStr);
+  if (ampm === "PM" && h !== 12) h += 12;
+  if (ampm === "AM" && h === 12) h = 0;
+  const d = new Date(baseDate);
+  d.setHours(h, m, 0, 0);
+  return d;
+}
+
+function formatTimeDisplay(dateStr: string): string {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  return d.toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+
+/* ── TimeRangeStep ── */
+
+function TimeRangeStep({ rangeStart, rangeEnd, onRangeChange, onBack, onNext }: {
+  rangeStart: string;
+  rangeEnd: string;
+  onRangeChange: (start: string, end: string) => void;
+  onBack: () => void;
+  onNext: () => void;
+}) {
+  const [mode, setMode] = useState<"presets" | "custom">(rangeStart ? "custom" : "presets");
+  const [selectedDay, setSelectedDay] = useState(0); // 0 = today, 1 = yesterday
+  const [startTime, setStartTime] = useState("9:00 AM");
+  const [endTime, setEndTime] = useState("6:00 PM");
+
+  const applyPreset = (hours: number) => {
+    const now = new Date();
+    const start = new Date(now.getTime() - hours * 3600000);
+    onRangeChange(toLocalDatetimeString(start), toLocalDatetimeString(now));
+  };
+
+  const applyDayPreset = (daysAgo: number) => {
+    const day = new Date();
+    day.setDate(day.getDate() - daysAgo);
+    day.setHours(0, 0, 0, 0);
+    const end = new Date(day);
+    if (daysAgo === 0) {
+      end.setTime(Date.now()); // today → up to now
+    } else {
+      end.setHours(23, 59, 59, 0);
+    }
+    onRangeChange(toLocalDatetimeString(day), toLocalDatetimeString(end));
+  };
+
+  const applyCustom = () => {
+    const base = new Date();
+    base.setDate(base.getDate() - selectedDay);
+    const start = parseTimeOption(startTime, base);
+    const end = parseTimeOption(endTime, base);
+    onRangeChange(toLocalDatetimeString(start), toLocalDatetimeString(end));
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Mode toggle */}
+      <div className="flex gap-1 rounded-lg bg-muted p-1">
+        {(["presets", "custom"] as const).map((m) => (
+          <button
+            key={m}
+            type="button"
+            onClick={() => setMode(m)}
+            className={`flex-1 py-1.5 rounded-md text-xs font-medium transition-all ${
+              mode === m ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {m === "presets" ? "Quick Select" : "Custom Range"}
+          </button>
+        ))}
+      </div>
+
+      {mode === "presets" ? (
+        <div className="space-y-2">
+          {/* Time presets */}
+          <p className="text-xs text-muted-foreground">Recent</p>
+          <div className="grid grid-cols-3 gap-2">
+            {TIME_PRESETS.map((p) => (
+              <button
+                key={p.hours}
+                type="button"
+                onClick={() => applyPreset(p.hours)}
+                className={`rounded-lg border px-3 py-2.5 text-xs font-medium transition-all ${
+                  rangeStart && Math.abs(new Date(rangeEnd).getTime() - new Date(rangeStart).getTime() - p.hours * 3600000) < 60000
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground/30"
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Day presets */}
+          <p className="text-xs text-muted-foreground mt-3">Full day</p>
+          <div className="grid grid-cols-2 gap-2">
+            {DAY_PRESETS.map((p) => (
+              <button
+                key={p.daysAgo}
+                type="button"
+                onClick={() => applyDayPreset(p.daysAgo)}
+                className={`rounded-lg border px-3 py-2.5 text-xs font-medium transition-all ${
+                  rangeStart && (() => {
+                    const s = new Date(rangeStart);
+                    const ref = new Date();
+                    ref.setDate(ref.getDate() - p.daysAgo);
+                    return s.toDateString() === ref.toDateString() && s.getHours() === 0;
+                  })()
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground/30"
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {/* Day selector */}
+          <div>
+            <p className="text-xs text-muted-foreground mb-1.5">Day</p>
+            <div className="flex gap-2">
+              {DAY_PRESETS.map((p) => (
+                <button
+                  key={p.daysAgo}
+                  type="button"
+                  onClick={() => { setSelectedDay(p.daysAgo); }}
+                  className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium transition-all ${
+                    selectedDay === p.daysAgo
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Time selectors */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-muted-foreground mb-1.5 block">From</label>
+              <select
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+                className="w-full rounded-lg border border-border bg-transparent px-3 py-2.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring appearance-none cursor-pointer"
+              >
+                {TIME_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1.5 block">To</label>
+              <select
+                value={endTime}
+                onChange={(e) => setEndTime(e.target.value)}
+                className="w-full rounded-lg border border-border bg-transparent px-3 py-2.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring appearance-none cursor-pointer"
+              >
+                {TIME_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <Button variant="outline" size="sm" className="w-full" onClick={applyCustom}>
+            Apply
+          </Button>
+        </div>
+      )}
+
+      {/* Selected range display */}
+      {rangeStart && rangeEnd && (
+        <div className="rounded-lg bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          {formatTimeDisplay(rangeStart)} → {formatTimeDisplay(rangeEnd)}
+        </div>
+      )}
+
+      <div className="flex gap-2">
+        <Button variant="outline" className="flex-1" onClick={onBack}>Back</Button>
+        <Button className="flex-1" onClick={onNext} disabled={!rangeStart || !rangeEnd}>Next</Button>
+      </div>
+    </div>
+  );
+}
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -358,34 +575,15 @@ export function AnalysisModal({ open, onClose, onJobCreated, templates, initialT
               </div>
             )}
 
-            {/* Step 2: Time range */}
+            {/* Step 2: Time range — presets + custom */}
             {step === 2 && (
-              <div className="space-y-4">
-                <div>
-                  <label htmlFor="range-start" className="text-xs font-medium text-muted-foreground mb-1.5 block">Start time</label>
-                  <input
-                    id="range-start"
-                    type="datetime-local"
-                    className="w-full rounded-xl border border-border bg-transparent px-3 py-2.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    value={rangeStart}
-                    onChange={(e) => setRangeStart(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label htmlFor="range-end" className="text-xs font-medium text-muted-foreground mb-1.5 block">End time</label>
-                  <input
-                    id="range-end"
-                    type="datetime-local"
-                    className="w-full rounded-xl border border-border bg-transparent px-3 py-2.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    value={rangeEnd}
-                    onChange={(e) => setRangeEnd(e.target.value)}
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" className="flex-1" onClick={() => setStep(1)}>Back</Button>
-                  <Button className="flex-1" onClick={() => setStep(3)} disabled={!rangeStart || !rangeEnd}>Next</Button>
-                </div>
-              </div>
+              <TimeRangeStep
+                rangeStart={rangeStart}
+                rangeEnd={rangeEnd}
+                onRangeChange={(start, end) => { setRangeStart(start); setRangeEnd(end); }}
+                onBack={() => setStep(1)}
+                onNext={() => setStep(3)}
+              />
             )}
 
             {/* Step 3: Notes */}
