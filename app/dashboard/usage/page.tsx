@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { TrendingUp, RefreshCw, X, Clock, Coins, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { TrendingUp, RefreshCw, X, Clock, Coins, ArrowUpRight, ArrowDownRight, Receipt, CheckCircle2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { auth } from "@/lib/firebase";
 import { apiFetch, normalizeCredits } from "@/lib/api";
@@ -15,6 +15,19 @@ const DEMO_TRANSACTIONS: Transaction[] = [
   { id: "txn_002", type: "analysis", amount: -350, description: "Audio analysis \u2014 35 windows", created_at: new Date(Date.now() - 172800000).toISOString() },
   { id: "txn_003", type: "analysis", amount: -700, description: "Audio analysis \u2014 70 windows", created_at: new Date(Date.now() - 259200000).toISOString() },
 ];
+
+interface Invoice {
+  invoice_id: string;
+  period: string;
+  status: string;
+  issued_at?: string;
+  due_at?: string;
+  paid_at?: string;
+  total_inr: string;
+  subtotal_inr: string;
+  gst_breakdown: { cgst: string; sgst: string; igst: string };
+  line_items: { description: string; quantity: number; unit_price: string; amount: string }[];
+}
 
 const TOPUP_OPTIONS = [500, 1000, 2500, 5000];
 
@@ -101,6 +114,7 @@ function TransactionItem({ txn }: { txn: Transaction }) {
 export default function UsagePage() {
   const [balance, setBalance] = useState<number>(0);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showTopup, setShowTopup] = useState(false);
@@ -117,11 +131,14 @@ export default function UsagePage() {
       setLoading(false);
       return;
     }
-    apiFetch<RawCreditsResponse>("/credits")
-      .then(normalizeCredits)
-      .then(({ balance, transactions }) => {
+    Promise.all([
+      apiFetch<RawCreditsResponse>("/credits").then(normalizeCredits),
+      apiFetch<Invoice[]>("/billing/invoices").catch(() => [] as Invoice[]),
+    ])
+      .then(([{ balance, transactions }, inv]) => {
         setBalance(balance);
         setTransactions(transactions);
+        setInvoices(inv ?? []);
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
@@ -378,6 +395,62 @@ export default function UsagePage() {
           </div>
         )}
       </motion.div>
+
+      {/* Invoices */}
+      {invoices.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, delay: 0.2, ease: [0.33, 1, 0.68, 1] }}
+        >
+          <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Invoices
+            <span className="ml-2 text-muted-foreground/40">{invoices.length}</span>
+          </h2>
+          <div className="rounded-xl border border-border bg-card/30 divide-y divide-border/50 overflow-hidden">
+            {invoices.map((inv) => (
+              <div key={inv.invoice_id} className="px-4 py-4 sm:px-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
+                      inv.status === "paid" ? "bg-emerald-500/10" : inv.status === "issued" ? "bg-amber-500/10" : "bg-muted/30"
+                    }`}>
+                      {inv.status === "paid"
+                        ? <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                        : inv.status === "issued"
+                          ? <AlertCircle className="h-4 w-4 text-amber-400" />
+                          : <Receipt className="h-4 w-4 text-muted-foreground" />
+                      }
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium text-foreground">
+                          {inv.period}
+                        </p>
+                        <span className={`text-[0.6875rem] px-1.5 py-0.5 rounded-full ${
+                          inv.status === "paid" ? "bg-emerald-500/10 text-emerald-400"
+                            : inv.status === "issued" ? "bg-amber-500/10 text-amber-400"
+                            : "bg-muted text-muted-foreground"
+                        }`}>
+                          {inv.status}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground/60 mt-0.5">
+                        {inv.line_items.map((li) => li.description).join(", ")}
+                        {inv.due_at && inv.status === "issued" && ` · Due ${formatDate(inv.due_at)}`}
+                        {inv.paid_at && inv.status === "paid" && ` · Paid ${formatDate(inv.paid_at)}`}
+                      </p>
+                    </div>
+                  </div>
+                  <p className="text-base font-semibold tabular-nums text-foreground shrink-0">
+                    {inv.total_inr}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </motion.div>
+      )}
     </div>
   );
 }
