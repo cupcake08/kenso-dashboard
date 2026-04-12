@@ -137,11 +137,16 @@ export function useRecordingsPlayer(deviceId: string) {
       const ctx = ensureCtx();
       const url = await getURL(seg);
       const resp = await fetch(url);
+      if (!resp.ok) {
+        console.error(`[Player] fetch failed for ${seg.segment_id}: ${resp.status}`);
+        return null;
+      }
       const arrayBuf = await resp.arrayBuffer();
       const audioBuf = await ctx.decodeAudioData(arrayBuf);
       bufferCache.current.set(seg.segment_id, audioBuf);
       return audioBuf;
-    } catch {
+    } catch (e) {
+      console.error(`[Player] decode failed for ${seg.segment_id}:`, e);
       return null;
     }
   }, [ensureCtx, getURL]);
@@ -200,7 +205,8 @@ export function useRecordingsPlayer(deviceId: string) {
       if (!seg.has_audio) { idx++; nextSegIdxRef.current = idx; continue; }
 
       const buf = await decodeSegment(seg);
-      if (!buf || !playingRef.current) return; // Stopped while decoding
+      if (!buf) { idx++; nextSegIdxRef.current = idx; continue; } // Skip failed segment
+      if (!playingRef.current) return;
 
       const startOffset = findStartOffset(buf);
       const trueDuration = buf.duration - startOffset;
@@ -305,7 +311,14 @@ export function useRecordingsPlayer(deviceId: string) {
       if (!seg?.has_audio) { nextSegIdxRef.current = segIdx + 1; scheduleAhead(); return; }
 
       const buf = await decodeSegment(seg);
-      if (!buf || !playingRef.current) return;
+      if (!buf) {
+        // Decode failed (CORS, network, codec) — skip to next segment instead of freezing
+        nextSegIdxRef.current = segIdx + 1;
+        setState((s) => ({ ...s, buffering: false }));
+        scheduleAhead();
+        return;
+      }
+      if (!playingRef.current) return;
 
       const startOffset = findStartOffset(buf) + localOffset;
       const trueDuration = (buf.duration - startOffset);

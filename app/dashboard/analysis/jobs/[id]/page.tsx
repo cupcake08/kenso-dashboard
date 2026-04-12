@@ -117,6 +117,24 @@ function formatTime(iso: string): string {
   });
 }
 
+function friendlyFailureReason(reason: string): string {
+  if (reason.includes("MAX_TOKENS") || reason.includes("truncated"))
+    return "The analysis produced too much output. Try selecting a shorter time range (under 30 minutes).";
+  if (reason.includes("no_audio_in_range"))
+    return "No audio recordings found in the selected time range. The device may have been offline.";
+  if (reason.includes("insufficient credits") || reason.includes("credit reserve"))
+    return "Not enough credits to run this analysis. Please top up your balance.";
+  if (reason.includes("timeout") || reason.includes("stuck in"))
+    return "The analysis timed out. This can happen with very large audio files. Please try again.";
+  if (reason.includes("all chunks failed"))
+    return "The analysis could not be completed. Please try again later.";
+  if (reason.includes("rate limit") || reason.includes("RESOURCE_EXHAUSTED"))
+    return "Our AI provider is temporarily overloaded. Please try again in a few minutes.";
+  if (reason.includes("temporarily unavailable"))
+    return "Our AI provider is temporarily unavailable. Your job has been queued and will retry automatically.";
+  return "Something went wrong during analysis. Please try again, or contact support if this persists.";
+}
+
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString("en-IN", {
     day: "numeric",
@@ -363,7 +381,7 @@ export default function JobDetailPage() {
       {/* Stats row */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
-          { label: "Credits used", value: job.actualCredits > 0 ? job.actualCredits : `~${job.estimatedCredits}` },
+          { label: "Credits used", value: job.status === "refunded" ? "Refunded" : job.actualCredits > 0 ? job.actualCredits : `~${job.estimatedCredits}` },
           { label: "Execution tier", value: job.executionTier },
           { label: "Devices", value: job.micIds.length },
           { label: "Created", value: formatDateTime(job.createdAt) },
@@ -377,7 +395,10 @@ export default function JobDetailPage() {
 
       {job.failureReason && (
         <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4">
-          <p className="text-sm text-red-400">{job.failureReason}</p>
+          <p className="text-sm text-red-400">{friendlyFailureReason(job.failureReason)}</p>
+          {job.status === "refunded" && (
+            <p className="text-xs text-muted-foreground mt-1">Credits have been refunded to your account.</p>
+          )}
         </div>
       )}
 

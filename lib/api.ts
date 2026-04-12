@@ -117,6 +117,7 @@ function unixToISO(unix: number): string {
 
 function mapDeviceStatus(status: string): Device["status"] {
   if (status === "active") return "online";
+  if (status === "inactive") return "offline";
   if (status === "soft_deleted") return "offline";
   if (status === "pending") return "pending";
   return "streaming";
