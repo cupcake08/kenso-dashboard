@@ -1,8 +1,8 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
-import { auth } from "@/lib/firebase";
+import { useState } from "react";
 import { apiFetch, normalizeDevice, enableMic, disableMic, whoami } from "@/lib/api";
 import type { Device, RawDevice } from "@/types/api";
+import { useApi } from "@/hooks/use-api";
 import { DeviceCard } from "@/components/dashboard/device-card";
 import { DeviceCardSkeleton } from "@/components/ui/skeleton";
 import { Radio } from "lucide-react";
@@ -15,65 +15,44 @@ const DEMO_DEVICES: Device[] = [
   { device_id: "dev_004_hsr", shop_id: "shop_004", label: "Store - HSR Layout", location: "HSR Layout, Bangalore", status: "pending", last_seen_at: new Date(Date.now() - 60000).toISOString() },
 ];
 
-// Demo company ID — replace with real company ID in production
 const DEMO_COMPANY_ID = "comp_demo_acme_retail";
+const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
 export default function DevicesPage() {
-  const [devices, setDevices] = useState<Device[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [activeCompanyId, setActiveCompanyId] = useState<string>("");
   const [togglingDeviceId, setTogglingDeviceId] = useState<string | null>(null);
 
-  const fetchDevices = useCallback(() => {
-    apiFetch<RawDevice[]>("/devices")
-      .then((raw) => { setDevices(raw.map(normalizeDevice)); setError(""); })
-      .catch((e: Error) => setError(e.message));
-  }, []);
+  // SWR: devices list with 30s polling, stale-while-revalidate
+  const { data: devices = [], isLoading, error, mutate } = useApi<Device[]>(
+    isDemoMode ? null : "/devices",
+    async (url) => {
+      const raw = await apiFetch<RawDevice[]>(url);
+      return raw.map(normalizeDevice);
+    },
+    { refreshInterval: 30000, fallbackData: isDemoMode ? DEMO_DEVICES : undefined },
+  );
 
-  useEffect(() => {
-    if (process.env.NEXT_PUBLIC_DEMO_MODE === "true") {
-      setDevices(DEMO_DEVICES);
-      setActiveCompanyId(DEMO_COMPANY_ID);
-      setLoading(false);
-      return;
-    }
-    // Wait for Firebase auth to initialize before making API calls
-    let unsub: (() => void) | undefined;
-    import("firebase/auth").then(({ onAuthStateChanged }) => {
-      if (!auth) { setLoading(false); return; }
-      unsub = onAuthStateChanged(auth, (user) => {
-        if (!user) { setLoading(false); return; }
-        fetchDevices();
-        whoami()
-          .then((who) => {
-            const active = who?.memberships?.find((m) => m.status === "active");
-            if (active) setActiveCompanyId(active.company_id);
-          })
-          .finally(() => setLoading(false));
-      });
-    });
-    return () => unsub?.();
-  }, [fetchDevices]);
-
-  // Poll for device status updates every 30s
-  useEffect(() => {
-    if (process.env.NEXT_PUBLIC_DEMO_MODE === "true") return;
-    const interval = setInterval(fetchDevices, 30000);
-    return () => clearInterval(interval);
-  }, [fetchDevices]);
+  // SWR: company ID for enable/disable actions
+  const { data: companyId = "" } = useApi<string>(
+    isDemoMode ? null : "/_whoami_company",
+    async () => {
+      const who = await whoami();
+      const active = who?.memberships?.find((m) => m.status === "active");
+      return active?.company_id ?? "";
+    },
+    { fallbackData: isDemoMode ? DEMO_COMPANY_ID : undefined },
+  );
 
   const handleToggleDevice = async (device: Device, action: "enable" | "disable") => {
     if (action === "disable" && !confirm("Disable this device? Streaming will stop.")) return;
-    if (!activeCompanyId) return;
+    if (!companyId) return;
     setTogglingDeviceId(device.device_id);
     try {
       if (action === "enable") {
-        await enableMic(activeCompanyId, device.device_id);
+        await enableMic(companyId, device.device_id);
       } else {
-        await disableMic(activeCompanyId, device.device_id);
+        await disableMic(companyId, device.device_id);
       }
-      fetchDevices();
+      mutate(); // revalidate devices list
       toast.success(action === "enable" ? "Device enabled" : "Device disabled");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : `Failed to ${action} device`;
@@ -83,7 +62,7 @@ export default function DevicesPage() {
     }
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div>
         <div className="mb-6">
@@ -107,7 +86,7 @@ export default function DevicesPage() {
         </div>
         <div role="alert" className="rounded-lg border border-red-400/20 bg-red-400/5 px-4 py-3 flex items-center justify-between">
           <p className="text-sm text-red-400">Unable to load devices. Check your connection and try again.</p>
-          <button onClick={() => { setError(""); fetchDevices(); }} className="text-xs text-red-400 hover:text-red-300 underline underline-offset-2 ml-4 shrink-0">Retry</button>
+          <button onClick={() => mutate()} className="text-xs text-red-400 hover:text-red-300 underline underline-offset-2 ml-4 shrink-0">Retry</button>
         </div>
       </div>
     );
@@ -152,7 +131,7 @@ export default function DevicesPage() {
           <DeviceCard
             key={device.device_id}
             device={device}
-            onToggle={activeCompanyId ? handleToggleDevice : undefined}
+            onToggle={companyId ? handleToggleDevice : undefined}
             toggling={togglingDeviceId === device.device_id}
           />
         ))}

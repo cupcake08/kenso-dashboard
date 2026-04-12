@@ -1,11 +1,11 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { TrendingUp, RefreshCw, X, Clock, Coins, ArrowUpRight, ArrowDownRight, Receipt, CheckCircle2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
-import { auth } from "@/lib/firebase";
 import { apiFetch, normalizeCredits } from "@/lib/api";
 import type { Transaction, RawCreditsResponse } from "@/types/api";
+import { useApi } from "@/hooks/use-api";
 import { Button } from "@/components/ui/button";
 import { Skeleton, TransactionSkeleton } from "@/components/ui/skeleton";
 
@@ -111,74 +111,55 @@ function TransactionItem({ txn }: { txn: Transaction }) {
   );
 }
 
+const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+
 export default function UsagePage() {
-  const [balance, setBalance] = useState<number>(0);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [showTopup, setShowTopup] = useState(false);
   const [topupAmount, setTopupAmount] = useState(1000);
   const [topupStatus, setTopupStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
 
+  // SWR: credits + transactions (stale-while-revalidate)
+  const { data: credits, isLoading: creditsLoading, error: creditsError, mutate: mutateCredits } = useApi<{ balance: number; transactions: Transaction[] }>(
+    isDemoMode ? null : "/credits",
+    async (url) => {
+      const raw = await apiFetch<RawCreditsResponse>(url);
+      return normalizeCredits(raw);
+    },
+    { fallbackData: isDemoMode ? { balance: DEMO_BALANCE, transactions: DEMO_TRANSACTIONS } : undefined },
+  );
+
+  // SWR: invoices
+  const { data: invoices = [] } = useApi<Invoice[]>(
+    isDemoMode ? null : "/billing/invoices",
+    undefined,
+    { fallbackData: [] },
+  );
+
+  const balance = credits?.balance ?? 0;
+  const transactions = credits?.transactions ?? [];
+  const loading = creditsLoading;
+  const error = creditsError?.message ?? "";
   const count = useCountUp(balance);
   const hoursEquiv = Math.round(balance / 100 * 10) / 10;
-
-  const fetchCredits = useCallback(() => {
-    if (process.env.NEXT_PUBLIC_DEMO_MODE === "true") {
-      setBalance(DEMO_BALANCE);
-      setTransactions(DEMO_TRANSACTIONS);
-      setLoading(false);
-      return;
-    }
-    Promise.all([
-      apiFetch<RawCreditsResponse>("/credits").then(normalizeCredits),
-      apiFetch<Invoice[]>("/billing/invoices").catch((e) => {
-        console.warn("[usage] invoices fetch failed:", e);
-        return [] as Invoice[];
-      }),
-    ])
-      .then(([{ balance, transactions }, inv]) => {
-        setBalance(balance);
-        setTransactions(transactions);
-        setInvoices(Array.isArray(inv) ? inv : []);
-      })
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => {
-    if (process.env.NEXT_PUBLIC_DEMO_MODE === "true") {
-      fetchCredits();
-      return;
-    }
-    let unsub: (() => void) | undefined;
-    import("firebase/auth").then(({ onAuthStateChanged }) => {
-      if (!auth) { setLoading(false); return; }
-      unsub = onAuthStateChanged(auth, (user) => {
-        if (!user) { setLoading(false); return; }
-        fetchCredits();
-      });
-    });
-    return () => unsub?.();
-  }, [fetchCredits]);
 
   async function handleTopup() {
     setTopupStatus("submitting");
     try {
       if (process.env.NEXT_PUBLIC_DEMO_MODE === "true") {
         await new Promise((r) => setTimeout(r, 800));
-        setBalance((b) => b + topupAmount);
-        setTransactions((prev) => [
-          { id: `txn_demo_${Date.now()}`, type: "topup" as const, amount: topupAmount, description: "Credit top-up (demo)", created_at: new Date().toISOString() },
-          ...prev,
-        ]);
+        mutateCredits({
+          balance: balance + topupAmount,
+          transactions: [
+            { id: `txn_demo_${Date.now()}`, type: "topup" as const, amount: topupAmount, description: "Credit top-up (demo)", created_at: new Date().toISOString() },
+            ...transactions,
+          ],
+        }, { revalidate: false });
       } else {
         await apiFetch("/credits/topup", {
           method: "POST",
           body: JSON.stringify({ amount: topupAmount }),
         });
-        await fetchCredits();
+        await mutateCredits();
       }
       setTopupStatus("success");
       toast.success(`${topupAmount.toLocaleString()} credits added`);
@@ -212,7 +193,7 @@ export default function UsagePage() {
         <p className="text-sm text-muted-foreground mb-6">Credits and billing for your organization</p>
         <div className="rounded-xl border border-red-400/20 bg-red-400/5 px-5 py-4 flex items-center justify-between">
           <p className="text-sm text-red-400">Unable to load usage data</p>
-          <Button variant="ghost" size="sm" onClick={() => { setError(""); fetchCredits(); }} className="text-red-400 hover:text-red-300 hover:bg-red-400/10">
+          <Button variant="ghost" size="sm" onClick={() => mutateCredits()} className="text-red-400 hover:text-red-300 hover:bg-red-400/10">
             Retry
           </Button>
         </div>
