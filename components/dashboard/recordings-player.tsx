@@ -129,50 +129,54 @@ function DayTimeline({ segments, offsets, currentTime, totalDuration, onSeek }: 
         Day overview
       </p>
       <div
-        className="relative h-7 rounded-lg bg-muted/20 cursor-pointer overflow-hidden"
-        onClick={handleClick}
+        className="relative"
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
-        aria-hidden="true"
       >
-        {/* Hover time tooltip */}
+        {/* Hover tooltip — outside overflow-hidden child so it isn't clipped */}
         {hoverInfo && (
           <div
-            className="absolute -top-7 -translate-x-1/2 px-1.5 py-0.5 rounded bg-popover border border-border text-[0.625rem] text-foreground tabular-nums whitespace-nowrap pointer-events-none z-10"
+            className="absolute -top-5 -translate-x-1/2 px-1.5 py-0.5 rounded bg-popover border border-border text-[0.625rem] text-foreground tabular-nums whitespace-nowrap pointer-events-none z-10"
             style={{ left: `${hoverInfo.pct}%` }}
           >
             {hoverInfo.label}
           </div>
         )}
-        {/* Hour boundary lines */}
-        {hourLines.map((pct) => (
-          <div
-            key={pct}
-            className="absolute top-0 bottom-0 w-px bg-border/30"
-            style={{ left: `${pct}%` }}
-          />
-        ))}
-
-        {/* Segment blocks */}
-        {segments.map((seg) => {
-          const left = ((seg.start_time_unix - firstStart) / span) * 100;
-          const width = ((seg.end_time_unix - seg.start_time_unix) / span) * 100;
-          return (
+        <div
+          className="relative h-7 rounded-lg bg-muted/20 cursor-pointer overflow-hidden"
+          onClick={handleClick}
+          aria-hidden="true"
+        >
+          {/* Hour boundary lines */}
+          {hourLines.map((pct) => (
             <div
-              key={seg.segment_id}
-              className="absolute top-1 bottom-1 rounded-sm bg-primary/25 hover:bg-primary/40 transition-colors"
-              style={{ left: `${left}%`, width: `${Math.max(width, 0.4)}%` }}
+              key={pct}
+              className="absolute top-0 bottom-0 w-px bg-border/30"
+              style={{ left: `${pct}%` }}
             />
-          );
-        })}
+          ))}
 
-        {/* Playhead */}
-        {totalDuration > 0 && (
-          <div
-            className="absolute top-0 bottom-0 w-0.5 bg-primary shadow-[0_0_4px_rgba(16,185,129,0.5)]"
-            style={{ left: `${Math.min(playheadPct, 99.5)}%` }}
-          />
-        )}
+          {/* Segment blocks */}
+          {segments.map((seg) => {
+            const left = ((seg.start_time_unix - firstStart) / span) * 100;
+            const width = ((seg.end_time_unix - seg.start_time_unix) / span) * 100;
+            return (
+              <div
+                key={seg.segment_id}
+                className="absolute top-1 bottom-1 rounded-sm bg-primary/25 hover:bg-primary/40 transition-colors"
+                style={{ left: `${left}%`, width: `${Math.max(width, 0.4)}%` }}
+              />
+            );
+          })}
+
+          {/* Playhead */}
+          {totalDuration > 0 && (
+            <div
+              className="absolute top-0 bottom-0 w-0.5 bg-primary shadow-[0_0_4px_rgba(16,185,129,0.5)]"
+              style={{ left: `${Math.min(playheadPct, 99.5)}%` }}
+            />
+          )}
+        </div>
       </div>
 
       {/* Time labels */}

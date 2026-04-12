@@ -6,7 +6,7 @@ export interface RawDevice {
   shop_id: string;
   label: string;
   location: string;
-  status: "active" | "soft_deleted" | "pending";
+  status: "active" | "inactive" | "soft_deleted" | "pending";
   last_seen_unix: number;
 }
 

@@ -170,8 +170,9 @@ export default function DeviceDetailPage() {
             aria-selected={tab === t}
             aria-controls={`panel-${t}`}
             disabled={isDisabled}
+            aria-disabled={isDisabled || undefined}
             title={isDisabled ? "Device is offline" : undefined}
-            onClick={() => !isDisabled && setTab(t)}
+            onClick={() => setTab(t)}
             className={`flex-1 sm:flex-initial px-2 sm:px-4 py-2 sm:py-2.5 rounded-md text-xs sm:text-sm font-medium text-center transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
               isDisabled ? "text-muted-foreground/40 cursor-not-allowed" :
               tab === t ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"

@@ -199,8 +199,9 @@ export function useRecordingsPlayer(deviceId: string) {
 
     const segs = segmentsRef.current;
     let idx = nextSegIdxRef.current;
+    const maxIdx = idx + LOOKAHEAD; // Fixed upper bound — prevents runaway loop if all segments fail
 
-    while (idx < segs.length && idx < nextSegIdxRef.current + LOOKAHEAD) {
+    while (idx < segs.length && idx < maxIdx) {
       const seg = segs[idx];
       if (!seg.has_audio) { idx++; nextSegIdxRef.current = idx; continue; }
 
