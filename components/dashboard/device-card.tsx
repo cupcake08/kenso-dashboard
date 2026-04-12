@@ -81,7 +81,11 @@ export const DeviceCard = memo(function DeviceCard({ device, onToggle, toggling 
         )}
         <p className="text-xs text-muted-foreground/70">
           {timeAgo(device.last_seen_at) ?? (
-            (device.status === "online" || device.status === "streaming") ? "Active" : null
+            device.status === "online" || device.status === "streaming"
+              ? "Active"
+              : device.status === "offline"
+                ? "Last seen unknown"
+                : null
           )}
         </p>
       </div>
@@ -89,14 +93,21 @@ export const DeviceCard = memo(function DeviceCard({ device, onToggle, toggling 
       {/* Zone 3 — Actions (generous gap to separate doing from knowing) */}
       {!isPending && (
         <div className="mt-5 flex gap-2">
-          <TransitionLink
-            href={`/dashboard/devices/${device.device_id}`}
-            transitionName={`device-${device.device_id}`}
-            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-muted py-2.5 text-sm font-medium text-foreground hover:bg-primary hover:text-primary-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-          >
-            <Mic className="h-4 w-4" />
-            Listen
-          </TransitionLink>
+          {device.status !== "offline" ? (
+            <TransitionLink
+              href={`/dashboard/devices/${device.device_id}`}
+              transitionName={`device-${device.device_id}`}
+              className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-muted py-2.5 text-sm font-medium text-foreground hover:bg-primary hover:text-primary-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            >
+              <Mic className="h-4 w-4" />
+              Listen
+            </TransitionLink>
+          ) : (
+            <span className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-muted/50 py-2.5 text-sm font-medium text-muted-foreground/40 cursor-not-allowed">
+              <Mic className="h-4 w-4" />
+              Offline
+            </span>
+          )}
           <TransitionLink
             href={`/dashboard/devices/${device.device_id}?tab=report`}
             transitionName={`device-${device.device_id}`}
