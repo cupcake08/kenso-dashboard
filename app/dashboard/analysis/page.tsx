@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
@@ -7,6 +7,7 @@ import { BarChart3, Shield, Users, TrendingUp, Plus, Loader2, ChevronRight, Gift
 import { listTemplates, listJobs, apiFetch, normalizeCredits } from "@/lib/api";
 import type { AnalysisTemplate, AnalysisJob } from "@/types/analysis";
 import type { RawCreditsResponse } from "@/types/api";
+import { useApi } from "@/hooks/use-api";
 import { BadgeVariant } from "@/components/ui/badge-variant";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -69,13 +70,6 @@ function costLabel(multiplier: number): string {
 
 export default function AnalysisPage() {
   const router = useRouter();
-  const [templates, setTemplates] = useState<AnalysisTemplate[]>([]);
-  const [jobs, setJobs] = useState<AnalysisJob[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [credits, setCredits] = useState(0);
-  const [subState, setSubState] = useState("");
-  const [trialEndsAt, setTrialEndsAt] = useState("");
   const [showJobs, setShowJobs] = useState(JOBS_PER_PAGE);
 
   // Modal state
@@ -83,48 +77,35 @@ export default function AnalysisPage() {
   const [modalTemplate, setModalTemplate] = useState<AnalysisTemplate | null>(null);
   const [modalStep, setModalStep] = useState(0);
 
-  const fetchData = useCallback(async () => {
-    if (IS_DEMO) {
-      setTemplates(DEMO_TEMPLATES);
-      setJobs(DEMO_JOBS);
-      setCredits(24850);
-      setSubState("trialing");
-      setTrialEndsAt(new Date(Date.now() + 14 * 86400000).toISOString());
-      setLoading(false);
-      return;
-    }
-    try {
-      const [t, j, c] = await Promise.all([
-        listTemplates(),
-        listJobs(),
-        apiFetch<RawCreditsResponse>("/credits").then(normalizeCredits),
-      ]);
-      setTemplates(t);
-      setJobs(j);
-      setCredits(c.balance);
-      if (c.subscriptionState) setSubState(c.subscriptionState);
-      if (c.trialEndsAt) setTrialEndsAt(c.trialEndsAt);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to load");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // SWR: templates
+  const { data: templates = [], isLoading: templatesLoading, error: templatesError, mutate: mutateAll } = useApi<AnalysisTemplate[]>(
+    IS_DEMO ? null : "/_analysis_all",
+    async () => listTemplates(),
+    { fallbackData: IS_DEMO ? DEMO_TEMPLATES : undefined },
+  );
 
-  useEffect(() => {
-    if (IS_DEMO) { fetchData(); return; }
-    let unsub: (() => void) | undefined;
-    import("firebase/auth").then(({ onAuthStateChanged }) => {
-      import("@/lib/firebase").then(({ auth }) => {
-        if (!auth) { setLoading(false); return; }
-        unsub = onAuthStateChanged(auth, (user: unknown) => {
-          if (!user) { setLoading(false); return; }
-          fetchData();
-        });
-      });
-    });
-    return () => unsub?.();
-  }, [fetchData]);
+  // SWR: jobs
+  const { data: jobs = [] } = useApi<AnalysisJob[]>(
+    IS_DEMO ? null : "/_analysis_jobs",
+    async () => listJobs(),
+    { fallbackData: IS_DEMO ? DEMO_JOBS : undefined },
+  );
+
+  // SWR: credits (shared cache key with usage page)
+  const { data: creditsData } = useApi<{ balance: number; subscriptionState?: string; trialEndsAt?: string }>(
+    IS_DEMO ? null : "/credits",
+    async (url) => {
+      const raw = await apiFetch<RawCreditsResponse>(url);
+      return normalizeCredits(raw);
+    },
+    { fallbackData: IS_DEMO ? { balance: 24850, subscriptionState: "trialing", trialEndsAt: new Date(Date.now() + 14 * 86400000).toISOString() } : undefined },
+  );
+
+  const credits = creditsData?.balance ?? 0;
+  const subState = creditsData?.subscriptionState ?? "";
+  const trialEndsAt = creditsData?.trialEndsAt ?? "";
+  const loading = templatesLoading;
+  const error = templatesError?.message ?? "";
 
   function openModal(template?: AnalysisTemplate) {
     setModalTemplate(template ?? null);
@@ -132,9 +113,9 @@ export default function AnalysisPage() {
     setModalOpen(true);
   }
 
-  function handleJobCreated(job: AnalysisJob) {
-    setJobs((prev) => [job, ...prev]);
-    // Don't redirect — SSE toast will notify when complete (background pattern)
+  function handleJobCreated(_job: AnalysisJob) {
+    // Revalidate jobs list to pick up the new job
+    mutateAll();
   }
 
   const visibleJobs = jobs.slice(0, showJobs);
@@ -183,7 +164,7 @@ export default function AnalysisPage() {
       {error && (
         <div className="rounded-xl border border-red-400/20 bg-red-400/5 px-5 py-3 flex items-center justify-between" role="alert">
           <p className="text-sm text-red-400">Unable to load analysis data</p>
-          <Button variant="ghost" size="sm" onClick={() => { setError(""); setLoading(true); fetchData(); }} className="text-red-400 hover:text-red-300 hover:bg-red-400/10">
+          <Button variant="ghost" size="sm" onClick={() => mutateAll()} className="text-red-400 hover:text-red-300 hover:bg-red-400/10">
             Retry
           </Button>
         </div>

@@ -4,10 +4,9 @@ import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, Clock, AlertTriangle, FileText, Loader2, Volume2, VolumeX } from "lucide-react";
-import { auth } from "@/lib/firebase";
-import { apiFetch, normalizeDevice, normalizeWindow } from "@/lib/api";
+import { apiFetch, normalizeDevice, normalizeWindow, normalizeWindowDetail } from "@/lib/api";
 import type { Device, WindowSummary, WindowDetail, RawDevice, RawWindowSummary, RawWindowDetail } from "@/types/api";
-import { normalizeWindowDetail } from "@/lib/api";
+import { useApi } from "@/hooks/use-api";
 import { Play, Pause } from "lucide-react";
 import { BadgeVariant } from "@/components/ui/badge-variant";
 import { Skeleton, WindowSkeleton } from "@/components/ui/skeleton";
@@ -56,56 +55,39 @@ export default function DeviceDetailPage() {
   const deviceId = params.id as string;
   const initialTab = (searchParams.get("tab") as Tab) ?? "listen";
 
+  const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
   const [tab, setTab] = useState<Tab>(initialTab);
-  const [device, setDevice] = useState<Device | null>(null);
-  const [windows, setWindows] = useState<WindowSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [selectedWindow, setSelectedWindow] = useState<WindowSummary | null>(null);
-  const [windowDetail, setWindowDetail] = useState<WindowDetail | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const { audioRef, state: listenState, audioLevel, frequencyDataRef, volume, setVolume, toggle: toggleListen, clientRef } = useListenLive(
-    deviceId,
-    device?.shop_id ?? ""
+
+  // SWR: device detail
+  const { data: device = null, isLoading: deviceLoading, error: deviceError } = useApi<Device | null>(
+    isDemoMode ? null : `/devices/${deviceId}`,
+    async (url) => normalizeDevice(await apiFetch<RawDevice>(url)),
+    { fallbackData: isDemoMode ? DEMO_DEVICE : null },
   );
 
-  const isListenConnected = listenState === "connected" || listenState === "connecting";
-  const { state: idleState, acknowledge: acknowledgeIdle, dismiss: dismissIdle } = useListenIdle(clientRef, isListenConnected);
+  // SWR: analysis windows
+  const { data: windows = [], isLoading: windowsLoading } = useApi<WindowSummary[]>(
+    isDemoMode ? null : `/devices/${deviceId}/windows`,
+    async (url) => (await apiFetch<RawWindowSummary[]>(url)).map(normalizeWindow),
+    { fallbackData: isDemoMode ? DEMO_WINDOWS : undefined },
+  );
 
-  useEffect(() => {
-    if (process.env.NEXT_PUBLIC_DEMO_MODE === "true") {
-      setDevice(DEMO_DEVICE);
-      setWindows(DEMO_WINDOWS);
-      setLoading(false);
-      return;
-    }
-    if (!auth?.currentUser) {
-      setLoading(false);
-      return;
-    }
-    Promise.all([
-      apiFetch<RawDevice>(`/devices/${deviceId}`).then(normalizeDevice),
-      apiFetch<RawWindowSummary[]>(`/devices/${deviceId}/windows`).then((raw) => raw.map(normalizeWindow)),
-    ])
-      .then(([d, w]) => { setDevice(d); setWindows(w); })
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, [deviceId]);
+  const loading = deviceLoading || windowsLoading;
+  const error = deviceError?.message ?? "";
 
-  // Fetch window detail when a window is selected
-  useEffect(() => {
-    if (!selectedWindow) {
-      setWindowDetail(null);
-      return;
-    }
-    if (process.env.NEXT_PUBLIC_DEMO_MODE === "true") {
-      setWindowDetail({
+  // SWR: window detail (conditional — only when a window is selected)
+  const { data: windowDetail = null, isLoading: detailLoading } = useApi<WindowDetail | null>(
+    !isDemoMode && selectedWindow ? `/devices/${deviceId}/windows/${selectedWindow.window_id}` : null,
+    async (url) => normalizeWindowDetail(await apiFetch<RawWindowDetail>(url)),
+    {
+      fallbackData: isDemoMode && selectedWindow ? {
         window_id: selectedWindow.window_id,
         started_at: selectedWindow.started_at,
         duration_minutes: selectedWindow.duration_minutes,
         summary: "Busy morning with good customer flow. Payment activity normal. One policy deviation flagged during the second half of the window.",
         highlights: [
-          { type: "payment", time: "10:15 AM", description: "Payment received via UPI — ₹450" },
+          { type: "payment", time: "10:15 AM", description: "Payment received via UPI — \u20B9450" },
           { type: "inquiry", time: "10:22 AM", description: "Customer asked about pricing for bulk orders" },
           { type: "action", time: "10:35 AM", description: "Staff arranged delivery for Thursday" },
         ],
@@ -114,19 +96,19 @@ export default function DeviceDetailPage() {
         ] : [],
         utterances: [
           { speaker: "SPEAKER_01", text: "How much for 5 packets?", absolute_time: "10:22 AM" },
-          { speaker: "SPEAKER_02", text: "₹450 total, I can give you a discount if you take 10.", absolute_time: "10:23 AM" },
+          { speaker: "SPEAKER_02", text: "\u20B9450 total, I can give you a discount if you take 10.", absolute_time: "10:23 AM" },
         ],
-      });
-      return;
-    }
-    setDetailLoading(true);
-    setWindowDetail(null);
-    apiFetch<RawWindowDetail>(`/devices/${deviceId}/windows/${selectedWindow.window_id}`)
-      .then(normalizeWindowDetail)
-      .then(setWindowDetail)
-      .catch(() => setWindowDetail(null))
-      .finally(() => setDetailLoading(false));
-  }, [selectedWindow, deviceId]);
+      } : null,
+    },
+  );
+
+  const { audioRef, state: listenState, audioLevel, frequencyDataRef, volume, setVolume, toggle: toggleListen, clientRef } = useListenLive(
+    deviceId,
+    device?.shop_id ?? ""
+  );
+
+  const isListenConnected = listenState === "connected" || listenState === "connecting";
+  const { state: idleState, acknowledge: acknowledgeIdle, dismiss: dismissIdle } = useListenIdle(clientRef, isListenConnected);
 
   function selectWindowAndSwitch(w: WindowSummary) {
     setSelectedWindow(w);

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { auth } from "@/lib/firebase";
 import { apiFetch, normalizeDevice, generateAPIKey, rotateAPIKey } from "@/lib/api";
 import type { Device, PlanResponse, RawDevice, RawPlanResponse } from "@/types/api";
+import { useApi } from "@/hooks/use-api";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Loader2, Copy, RefreshCw, Key, User, CreditCard, Cpu, Check, AlertCircle, LogOut } from "lucide-react";
@@ -23,51 +24,50 @@ const fadeUp = {
   transition: { duration: 0.3, ease: [0.33, 1, 0.68, 1] as const },
 };
 
+const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+
 export default function SettingsPage() {
   const router = useRouter();
   const [user, setUser] = useState<FirebaseUser | null>(null);
-  const [plan, setPlan] = useState<PlanResponse | null>(null);
-  const [devices, setDevices] = useState<Device[]>([]);
   const [labels, setLabels] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [apiKeyCopied, setApiKeyCopied] = useState(false);
   const [apiKeyLoading, setApiKeyLoading] = useState(false);
   const [savedOk, setSavedOk] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
 
+  // SWR: plan info
+  const { data: plan = null } = useApi<PlanResponse | null>(
+    isDemoMode ? null : "/billing/plan",
+    async (url) => apiFetch<RawPlanResponse>(url).catch(() => null),
+    { fallbackData: isDemoMode ? DEMO_PLAN : null },
+  );
+
+  // SWR: devices (shared cache key with devices list page)
+  const { data: devices = [], isLoading: loading, mutate: mutateDevices } = useApi<Device[]>(
+    isDemoMode ? null : "/devices",
+    async (url) => {
+      const raw = await apiFetch<RawDevice[]>(url);
+      return raw.map(normalizeDevice);
+    },
+    { fallbackData: isDemoMode ? DEMO_DEVICES_SETTINGS : undefined },
+  );
+
+  // Sync labels when devices load/change
   useEffect(() => {
-    if (process.env.NEXT_PUBLIC_DEMO_MODE === "true") {
-      setPlan(DEMO_PLAN);
-      setDevices(DEMO_DEVICES_SETTINGS);
-      const init: Record<string, string> = {};
-      DEMO_DEVICES_SETTINGS.forEach((d) => { init[d.device_id] = d.label; });
-      setLabels(init);
-      setLoading(false);
-      return;
-    }
-    let unsub: (() => void) | undefined;
+    const init: Record<string, string> = {};
+    devices.forEach((d) => { init[d.device_id] = d.label; });
+    setLabels(init);
+  }, [devices]);
+
+  // Get Firebase user for display
+  useEffect(() => {
+    if (isDemoMode) return;
     import("firebase/auth").then(({ onAuthStateChanged }) => {
-      if (!auth) { setLoading(false); return; }
-      unsub = onAuthStateChanged(auth, (u) => {
-        setUser(u);
-        if (!u) { setLoading(false); return; }
-        Promise.all([
-          apiFetch<RawPlanResponse>("/billing/plan").catch(() => null),
-          apiFetch<RawDevice[]>("/devices").then((raw) => {
-            const devs = (raw ?? []).map(normalizeDevice);
-            setDevices(devs);
-            const init: Record<string, string> = {};
-            devs.forEach((d) => { init[d.device_id] = d.label; });
-            setLabels(init);
-            return devs;
-          }).catch(() => []),
-        ])
-          .then(([p]) => { if (p) setPlan(p as PlanResponse); })
-          .finally(() => setLoading(false));
-      });
+      if (!auth) return;
+      const unsub = onAuthStateChanged(auth, setUser);
+      return () => unsub();
     });
-    return () => unsub?.();
   }, []);
 
   async function saveLabel(deviceId: string) {
@@ -76,15 +76,17 @@ export default function SettingsPage() {
     if (newLabel === originalLabel) return;
     setSaving(deviceId);
     setSavedOk(null);
-    setDevices((prev) => prev.map((d) => d.device_id === deviceId ? { ...d, label: newLabel } : d));
+    // Optimistic update
+    mutateDevices(devices.map((d) => d.device_id === deviceId ? { ...d, label: newLabel } : d), { revalidate: false });
     try {
       await apiFetch(`/devices/${deviceId}`, { method: "PATCH", body: JSON.stringify({ label: newLabel }) });
+      mutateDevices(); // revalidate with server
       setSavedOk(deviceId);
       toast.success("Device label updated");
       setTimeout(() => setSavedOk(null), 2000);
     } catch (e) {
       setLabels((prev) => ({ ...prev, [deviceId]: originalLabel }));
-      setDevices((prev) => prev.map((d) => d.device_id === deviceId ? { ...d, label: originalLabel } : d));
+      mutateDevices(); // rollback — refetch actual state
       toast.error(e instanceof Error ? e.message : "Failed to save");
     } finally {
       setSaving(null);
