@@ -162,25 +162,23 @@ export default function DeviceDetailPage() {
       {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
       <audio ref={audioRef} autoPlay playsInline style={{ display: "none" }} />
       {/* Back */}
-      <Link href="/dashboard/devices" className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
+      <Link href="/dashboard/devices" className="mb-3 sm:mb-4 -ml-1 inline-flex items-center gap-1.5 px-1 py-1 rounded-md text-sm text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
         <ArrowLeft className="h-4 w-4" /> Back to devices
       </Link>
 
-      {/* Device header */}
-      <div
-        className="mb-6 flex items-center justify-between"
-      >
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">{device.label || "Unnamed Device"}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{device.location || device.device_id}</p>
+      {/* Device header — stacks on mobile */}
+      <div className="mb-4 sm:mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-bold text-foreground truncate">{device.label || "Unnamed Device"}</h1>
+          <p className="mt-0.5 sm:mt-1 text-sm text-muted-foreground truncate">{device.location || device.device_id}</p>
         </div>
-        <span className={`text-sm font-medium capitalize ${device.status === "online" || device.status === "streaming" ? "text-status-online" : device.status === "offline" ? "text-status-offline" : device.status === "pending" ? "text-status-pending" : "text-muted-foreground"}`}>
+        <span className={`text-sm font-medium capitalize self-start sm:self-auto shrink-0 ${device.status === "online" || device.status === "streaming" ? "text-status-online" : device.status === "offline" ? "text-status-offline" : device.status === "pending" ? "text-status-pending" : "text-muted-foreground"}`}>
           {device.status}
         </span>
       </div>
 
-      {/* Tabs */}
-      <div role="tablist" aria-label="Device sections" className="mb-6 flex gap-1 rounded-lg bg-muted p-1 border border-border w-fit">
+      {/* Tabs — full-width equal tabs on mobile, shrink-wrap on desktop */}
+      <div role="tablist" aria-label="Device sections" className="mb-4 sm:mb-6 flex gap-1 rounded-lg bg-muted p-1 border border-border sm:w-fit">
         {([["listen", "Listen Live"], ["recordings", "Recordings"], ["recent", "Recent"], ["report", "Report"]] as const).map(([t, label]) => (
           <button
             key={t}
@@ -188,7 +186,7 @@ export default function DeviceDetailPage() {
             aria-selected={tab === t}
             aria-controls={`panel-${t}`}
             onClick={() => setTab(t)}
-            className={`px-4 py-2.5 rounded-md text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+            className={`flex-1 sm:flex-initial px-2 sm:px-4 py-2 sm:py-2.5 rounded-md text-xs sm:text-sm font-medium text-center transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
               tab === t ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
             }`}
           >
@@ -346,14 +344,14 @@ export default function DeviceDetailPage() {
                         : "border-border hover:border-muted-foreground/30"
                     }`}
                   >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-foreground">
+                    <div className="flex items-start sm:items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">
                           {new Date(w.started_at).toLocaleString()}
                         </p>
                         <p className="mt-0.5 text-xs text-muted-foreground">{w.duration_minutes}m window</p>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 shrink-0">
                         <WindowStatusBadge status={w.status} />
                         {w.flag_count > 0 && (
                           <BadgeVariant variant="amber" className="gap-1">
@@ -375,7 +373,7 @@ export default function DeviceDetailPage() {
             {selectedWindow ? (
               <div className="rounded-xl border border-border bg-card/50 overflow-hidden">
                 {/* Window header */}
-                <div className="px-5 pt-5 pb-4 border-b border-border/50">
+                <div className="px-3 sm:px-5 pt-4 sm:pt-5 pb-3 sm:pb-4 border-b border-border/50">
                   <div className="flex items-center justify-between mb-1">
                     <h3 className="text-sm font-semibold text-foreground">Window Report</h3>
                     <WindowStatusBadge status={selectedWindow.status} />
@@ -394,22 +392,24 @@ export default function DeviceDetailPage() {
                   <div className="divide-y divide-border/50">
                     {/* Summary */}
                     {windowDetail.summary && (
-                      <div className="px-5 py-4">
+                      <div className="px-3 sm:px-5 py-3 sm:py-4">
                         <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Summary</h4>
                         <p className="text-sm text-foreground leading-relaxed">{windowDetail.summary}</p>
                       </div>
                     )}
 
-                    {/* Highlights */}
+                    {/* Highlights — stacks on mobile */}
                     {windowDetail.highlights.length > 0 && (
-                      <div className="px-5 py-4">
+                      <div className="px-3 sm:px-5 py-3 sm:py-4">
                         <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">Highlights</h4>
-                        <div className="space-y-2">
+                        <div className="space-y-3 sm:space-y-2">
                           {windowDetail.highlights.map((h, i) => (
-                            <div key={i} className="flex items-start gap-3 text-sm">
-                              <span className="text-xs text-muted-foreground whitespace-nowrap pt-0.5">{h.time}</span>
-                              <BadgeVariant variant="emerald">{h.type}</BadgeVariant>
-                              <span className="text-foreground">{h.description}</span>
+                            <div key={i} className="text-sm">
+                              <div className="flex items-center gap-2 mb-0.5 sm:mb-0">
+                                <span className="text-xs text-muted-foreground whitespace-nowrap">{h.time}</span>
+                                <BadgeVariant variant="emerald">{h.type}</BadgeVariant>
+                              </div>
+                              <p className="text-foreground sm:ml-0 mt-0.5 sm:mt-0 sm:inline">{h.description}</p>
                             </div>
                           ))}
                         </div>
@@ -418,7 +418,7 @@ export default function DeviceDetailPage() {
 
                     {/* Flags */}
                     {windowDetail.flags.length > 0 && (
-                      <div className="px-5 py-4">
+                      <div className="px-3 sm:px-5 py-3 sm:py-4">
                         <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">Flags</h4>
                         <div className="space-y-2">
                           {windowDetail.flags.map((f, i) => (
@@ -438,15 +438,15 @@ export default function DeviceDetailPage() {
                       </div>
                     )}
 
-                    {/* Utterances */}
+                    {/* Utterances — stacks speaker above text on mobile */}
                     {windowDetail.utterances.length > 0 && (
-                      <div className="px-5 py-4">
+                      <div className="px-3 sm:px-5 py-3 sm:py-4">
                         <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">Transcript</h4>
-                        <div className="space-y-2">
+                        <div className="space-y-2.5 sm:space-y-2">
                           {windowDetail.utterances.map((u, i) => (
-                            <div key={i} className="flex items-start gap-3 text-sm">
-                              <span className="text-xs font-medium text-primary whitespace-nowrap pt-0.5">{u.speaker}</span>
-                              <span className="text-foreground">{u.text}</span>
+                            <div key={i} className="text-sm">
+                              <span className="text-xs font-medium text-primary whitespace-nowrap">{u.speaker}</span>
+                              <p className="text-foreground mt-0.5 sm:mt-0 sm:inline sm:ml-3">{u.text}</p>
                             </div>
                           ))}
                         </div>
