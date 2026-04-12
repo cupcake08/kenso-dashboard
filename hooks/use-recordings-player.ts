@@ -32,6 +32,9 @@ const LOOKAHEAD = 3; // Pre-decode this many segments ahead
  * then schedule playback using the high-precision audioContext.currentTime clock.
  * Each segment is scheduled to start at the exact sample where the previous ends.
  * This gives sample-accurate gapless playback — same as Spotify/SoundCloud web players.
+ *
+ * Display clock uses performance.now() (wall clock) decoupled from AudioContext
+ * so the progress bar stays smooth even during suspend/resume transitions.
  */
 export function useRecordingsPlayer(deviceId: string) {
   const [segments, setSegments] = useState<Segment[]>([]);
@@ -45,7 +48,15 @@ export function useRecordingsPlayer(deviceId: string) {
     buffering: false,
   });
 
-  // Web Audio context + gain node (for volume control)
+  // ── Refs that stay current (avoid stale closures in callbacks) ──
+  // These solve BUG 3/4/5: toggle, skip, seekTo, maybeEndPlayback, and
+  // scheduleAhead now read from refs instead of React state, making them
+  // stable (not recreated every rAF frame) and always current.
+  const currentTimeRef = useRef(0);
+  const totalDurationRef = useRef(0);
+  const segmentsRef = useRef<Segment[]>([]);
+
+  // Web Audio context + gain node
   const ctxRef = useRef<AudioContext | null>(null);
   const gainRef = useRef<GainNode | null>(null);
 
@@ -66,11 +77,6 @@ export function useRecordingsPlayer(deviceId: string) {
   // Timeline state
   const nextScheduleTimeRef = useRef(0); // next audioCtx.currentTime to schedule at
   const nextSegIdxRef = useRef(0);       // next segment index to schedule
-  // Display clock uses performance.now() (wall clock) — decoupled from the
-  // AudioContext clock so the progress bar stays smooth even when the audio
-  // engine is briefly suspended (e.g. after a pause → resume transition, where
-  // ctx.currentTime doesn't advance for a few frames). Audio scheduling still
-  // uses ctx.currentTime for sample-accurate gapless playback.
   const playStartWallMs = useRef(0);     // performance.now() when playback started
   const playStartGlobal = useRef(0);     // global timeline offset when playback started
   const playingRef = useRef(false);
@@ -102,6 +108,8 @@ export function useRecordingsPlayer(deviceId: string) {
       total += seg.duration_ms / 1000;
     }
     offsetsRef.current = offsets;
+    totalDurationRef.current = total;
+    segmentsRef.current = segments;
     setState((s) => ({ ...s, totalDuration: total }));
   }, [segments]);
 
@@ -163,30 +171,32 @@ export function useRecordingsPlayer(deviceId: string) {
     cancelAnimationFrame(rafRef.current);
   }, []);
 
-  // End-of-playback detection: called from every source.onended. Fires when
-  // nothing is scheduled AND we've already consumed every segment. Handles the
-  // 1-segment case (where scheduleAhead's while loop never runs) uniformly
-  // with the N-segment case. Safe to call multiple times.
+  // End-of-playback detection. Uses refs only — stable identity, no stale closures.
+  // Fires when nothing is scheduled AND we've consumed every segment.
+  // Handles 1-segment and N-segment cases uniformly. Safe to call multiple times.
   const maybeEndPlayback = useCallback(() => {
     if (!playingRef.current) return;
     if (scheduledRef.current.length > 0) return;
-    if (nextSegIdxRef.current < segments.length) return;
+    if (nextSegIdxRef.current < segmentsRef.current.length) return;
     playingRef.current = false;
     cancelAnimationFrame(rafRef.current);
+    const total = totalDurationRef.current;
+    currentTimeRef.current = total;
     setState((s) => ({
       ...s,
       playing: false,
-      currentTime: s.totalDuration,
-      currentSegmentIdx: Math.max(0, segments.length - 1),
+      currentTime: total,
+      currentSegmentIdx: Math.max(0, segmentsRef.current.length - 1),
     }));
-  }, [segments]);
+  }, []);
 
-  // Schedule the next N segments ahead of the current playback position
+  // Schedule the next N segments ahead of the current playback position.
+  // Uses segmentsRef (not segments state) for stable callback identity.
   const scheduleAhead = useCallback(async () => {
     const ctx = ctxRef.current;
     if (!ctx || !playingRef.current) return;
 
-    const segs = segments;
+    const segs = segmentsRef.current;
     let idx = nextSegIdxRef.current;
 
     while (idx < segs.length && idx < nextSegIdxRef.current + LOOKAHEAD) {
@@ -223,8 +233,7 @@ export function useRecordingsPlayer(deviceId: string) {
         segIdx: idx,
       });
 
-      // When this source ends, clean up and maybe schedule more.
-      // maybeEndPlayback handles the terminal case uniformly for 1-seg and N-seg.
+      // When this source ends, clean up and maybe schedule more
       source.onended = () => {
         scheduledRef.current = scheduledRef.current.filter((s) => s.source !== source);
         if (!playingRef.current) return;
@@ -237,29 +246,32 @@ export function useRecordingsPlayer(deviceId: string) {
     }
 
     setState((s) => ({ ...s, buffering: false }));
-  }, [segments, decodeSegment, findStartOffset, maybeEndPlayback]);
+  }, [decodeSegment, findStartOffset, maybeEndPlayback]);
 
   // Time update loop (runs via rAF). Uses performance.now() — NOT ctx.currentTime —
-  // so the display clock keeps ticking even when the AudioContext is briefly
-  // suspended or in a resume transition. The loop self-perpetuates as long as
-  // playingRef.current is true; pause and maybeEndPlayback clear the ref so the
-  // loop dies cleanly on its next frame.
+  // so the display clock keeps ticking smoothly. Writes to currentTimeRef so
+  // toggle/skip/seekTo always have the freshest value.
   const updateTime = useCallback(() => {
     if (!playingRef.current) return;
 
     const elapsed = ((performance.now() - playStartWallMs.current) / 1000) * speedRef.current;
     const globalTime = playStartGlobal.current + elapsed;
+    const total = totalDurationRef.current;
+    const clamped = Math.min(globalTime, total);
+
+    // Always-current ref (no stale closure)
+    currentTimeRef.current = clamped;
 
     // Find which segment we're in
     const offsets = offsetsRef.current;
     let currentIdx = 0;
     for (let i = offsets.length - 1; i >= 0; i--) {
-      if (globalTime >= offsets[i]) { currentIdx = i; break; }
+      if (clamped >= offsets[i]) { currentIdx = i; break; }
     }
 
     setState((s) => ({
       ...s,
-      currentTime: Math.min(globalTime, s.totalDuration),
+      currentTime: clamped,
       currentSegmentIdx: currentIdx,
     }));
 
@@ -273,6 +285,7 @@ export function useRecordingsPlayer(deviceId: string) {
 
     // Find which segment this falls into
     const offsets = offsetsRef.current;
+    const segs = segmentsRef.current;
     let segIdx = 0;
     for (let i = offsets.length - 1; i >= 0; i--) {
       if (globalSeconds >= offsets[i]) { segIdx = i; break; }
@@ -281,6 +294,7 @@ export function useRecordingsPlayer(deviceId: string) {
     playingRef.current = true;
     playStartWallMs.current = performance.now();
     playStartGlobal.current = globalSeconds;
+    currentTimeRef.current = globalSeconds;
     nextSegIdxRef.current = segIdx;
     nextScheduleTimeRef.current = ctx.currentTime + 0.01;
 
@@ -291,7 +305,7 @@ export function useRecordingsPlayer(deviceId: string) {
 
     // Special handling for first segment (start mid-segment)
     (async () => {
-      const seg = segments[segIdx];
+      const seg = segs[segIdx];
       if (!seg?.has_audio) { nextSegIdxRef.current = segIdx + 1; scheduleAhead(); return; }
 
       const buf = await decodeSegment(seg);
@@ -328,7 +342,7 @@ export function useRecordingsPlayer(deviceId: string) {
     })();
 
     rafRef.current = requestAnimationFrame(updateTime);
-  }, [segments, ensureCtx, stopAll, decodeSegment, findStartOffset, scheduleAhead, maybeEndPlayback, updateTime]);
+  }, [ensureCtx, stopAll, decodeSegment, findStartOffset, scheduleAhead, maybeEndPlayback, updateTime]);
 
   const play = useCallback((fromIdx?: number) => {
     const idx = fromIdx ?? 0;
@@ -344,21 +358,28 @@ export function useRecordingsPlayer(deviceId: string) {
     setState((s) => ({ ...s, playing: false }));
   }, [stopAll]);
 
+  // FIX BUG 2: When at end (within 0.5s of totalDuration), restart from 0.
+  // FIX BUG 3: Uses currentTimeRef (always fresh) instead of state.currentTime
+  // (stale closure that was also recreating this callback every rAF frame).
   const toggle = useCallback(() => {
     if (playingRef.current) {
       pause();
     } else {
-      // Resume from current position
-      playFrom(state.currentTime > 0 ? state.currentTime : 0);
+      const atEnd = currentTimeRef.current >= totalDurationRef.current - 0.5;
+      playFrom(atEnd ? 0 : currentTimeRef.current);
     }
-  }, [pause, playFrom, state.currentTime]);
+  }, [pause, playFrom]);
 
+  // FIX BUG 3: Uses currentTimeRef instead of state.currentTime.
   const seekTo = useCallback((globalSeconds: number) => {
-    const clamped = Math.max(0, Math.min(globalSeconds, state.totalDuration - 0.1));
+    const total = totalDurationRef.current;
+    if (total <= 0) return;
+    const clamped = Math.max(0, Math.min(globalSeconds, total - 0.01));
     if (playingRef.current) {
       playFrom(clamped);
     } else {
       // Just update position without playing
+      currentTimeRef.current = clamped;
       const offsets = offsetsRef.current;
       let idx = 0;
       for (let i = offsets.length - 1; i >= 0; i--) {
@@ -366,15 +387,35 @@ export function useRecordingsPlayer(deviceId: string) {
       }
       setState((s) => ({ ...s, currentTime: clamped, currentSegmentIdx: idx }));
     }
-  }, [playFrom, state.totalDuration]);
+  }, [playFrom]);
 
+  // FIX BUG 3: Uses currentTimeRef instead of state.currentTime.
   const skip = useCallback((seconds: number) => {
-    seekTo(state.currentTime + seconds);
-  }, [seekTo, state.currentTime]);
+    seekTo(currentTimeRef.current + seconds);
+  }, [seekTo]);
 
+  // FIX BUG 1: Speed change snapshots the current global position and resets
+  // wall-clock anchors. Without this, updateTime's formula
+  //   elapsed = (wallDelta / 1000) * newSpeed
+  // would retroactively apply the new speed to ALL elapsed time, not just
+  // the time after the speed change.
   const cycleSpeed = useCallback(() => {
     const currentIdx = SPEEDS.indexOf(speedRef.current as typeof SPEEDS[number]);
     const next = SPEEDS[(currentIdx + 1) % SPEEDS.length];
+
+    if (playingRef.current) {
+      // Snapshot current position before changing speed
+      const now = performance.now();
+      const elapsed = ((now - playStartWallMs.current) / 1000) * speedRef.current;
+      const currentGlobal = playStartGlobal.current + elapsed;
+
+      // Reset anchors so future updateTime calculations use the new speed
+      // only for time elapsed AFTER this moment
+      playStartWallMs.current = now;
+      playStartGlobal.current = currentGlobal;
+      currentTimeRef.current = currentGlobal;
+    }
+
     speedRef.current = next;
 
     // Update all currently scheduled sources
@@ -388,6 +429,7 @@ export function useRecordingsPlayer(deviceId: string) {
   const loadDate = useCallback(async (date: string) => {
     stopAll();
     playingRef.current = false;
+    currentTimeRef.current = 0;
     bufferCache.current.clear();
     urlCache.current.clear();
     setState((s) => ({ ...s, loading: true, playing: false, currentSegmentIdx: -1, currentTime: 0 }));
