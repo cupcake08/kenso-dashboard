@@ -63,6 +63,26 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [resetSent, setResetSent] = useState(false);
 
+  // Basic email validation — catches typos before hitting Firebase
+  const emailError = (() => {
+    if (!email || tab === "reset") return "";
+    const trimmed = email.trim();
+    if (trimmed.length > 0 && !trimmed.includes("@")) return "Missing @";
+    if (trimmed.includes("@")) {
+      const [, domain] = trimmed.split("@");
+      if (!domain || !domain.includes(".")) return "Invalid domain";
+      if (domain.endsWith(".")) return "Invalid domain";
+      // Common typos
+      const typos: Record<string, string> = {
+        "gmial.com": "gmail.com", "gamil.com": "gmail.com", "gmal.com": "gmail.com",
+        "yaho.com": "yahoo.com", "yahooo.com": "yahoo.com",
+        "outlok.com": "outlook.com", "outloo.com": "outlook.com",
+        "hotmal.com": "hotmail.com",
+      };
+      if (typos[domain]) return `Did you mean ${trimmed.split("@")[0]}@${typos[domain]}?`;
+    }
+    return "";
+  })();
 
   // Sonar dots — Canvas-based reactive dot grid
   useEffect(() => {
@@ -141,6 +161,7 @@ export default function LoginPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (DEMO_MODE) { router.push("/dashboard/devices"); return; }
+    if (emailError) { setError(emailError); return; }
     setError("");
     setLoading(true);
     try {
@@ -153,9 +174,21 @@ export default function LoginPage() {
         const cred = await createUserWithEmailAndPassword(auth, email, password);
         if (name.trim()) await updateProfile(cred.user, { displayName: name.trim() });
         user = cred.user;
+        // Send verification email immediately after signup
+        const { sendEmailVerification } = await import("firebase/auth");
+        await sendEmailVerification(user);
+        router.push("/verify-email");
+        return;
       } else {
         const cred = await signInWithEmailAndPassword(auth, email, password);
         user = cred.user;
+      }
+      // Block unverified emails — redirect to verification screen
+      if (!user.emailVerified) {
+        const { sendEmailVerification } = await import("firebase/auth");
+        try { await sendEmailVerification(user); } catch { /* may fail if recently sent */ }
+        router.push("/verify-email");
+        return;
       }
       const token = await user.getIdToken();
       setAuthCookie(token);
@@ -351,7 +384,10 @@ export default function LoginPage() {
 
             <div>
               <label htmlFor="email" className="text-xs font-medium text-muted-foreground mb-1.5 block">Email</label>
-              <Input id="email" type="email" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
+              <Input id="email" type="email" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" className={emailError ? "border-amber-400/50" : ""} />
+              {emailError && (
+                <p className="mt-1 text-xs text-amber-400">{emailError}</p>
+              )}
             </div>
 
             <div>

@@ -24,11 +24,14 @@ export function Providers({ children }: { children: React.ReactNode }) {
       import("@/lib/firebase").then(({ auth }) => {
         if (!auth) return;
         unsubscribe = onIdTokenChanged(auth, (user) => {
-          if (user) {
+          if (user && user.emailVerified) {
             user.getIdToken().then((token) => setAuthCookie(token));
-          } else {
+          } else if (!user) {
             clearAuthCookie();
           }
+          // Unverified user: don't set cookie, don't clear it (they may be
+          // on the verify-email page where we intentionally avoid setting it
+          // until verification completes).
         });
       });
     });
