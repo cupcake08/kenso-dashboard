@@ -101,6 +101,10 @@ function TimeRangeStep({ rangeStart, rangeEnd, onRangeChange, onBack, onNext }: 
     base.setDate(base.getDate() - selectedDay);
     const start = parseTimeOption(startTime, base);
     const end = parseTimeOption(endTime, base);
+    // If end is before start, the range crosses midnight — roll end to next day
+    if (end <= start) {
+      end.setDate(end.getDate() + 1);
+    }
     onRangeChange(toLocalDatetimeString(start), toLocalDatetimeString(end));
   };
 
