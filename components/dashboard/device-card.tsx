@@ -55,7 +55,7 @@ export const DeviceCard = memo(function DeviceCard({ device, onToggle, toggling 
       whileHover={{ y: -2 }}
       transition={{ duration: 0.2, ease: [0.33, 1, 0.68, 1] }}
       style={{ viewTransitionName: `device-${device.device_id}` }}
-      className="group relative rounded-xl border border-border bg-card/50 p-5 shadow-lg hover:border-muted-foreground/30"
+      className="group relative flex flex-col rounded-xl border border-border bg-card/50 p-5 shadow-lg hover:border-muted-foreground/30"
     >
       {/* Zone 1 — Identity */}
       <div className="flex items-start justify-between gap-2">
@@ -90,9 +90,9 @@ export const DeviceCard = memo(function DeviceCard({ device, onToggle, toggling 
         </p>
       </div>
 
-      {/* Zone 3 — Actions (generous gap to separate doing from knowing) */}
+      {/* Zone 3 — Actions (pushed to bottom for consistent card alignment) */}
       {!isPending && (
-        <div className="mt-5 flex gap-2">
+        <div className="mt-auto pt-5 flex gap-2">
           {device.status !== "offline" ? (
             <TransitionLink
               href={`/dashboard/devices/${device.device_id}`}
