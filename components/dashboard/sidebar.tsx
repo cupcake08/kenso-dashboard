@@ -1,10 +1,10 @@
 "use client";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mic, CreditCard, Settings, ChevronLeft, ChevronRight, BarChart3, X } from "lucide-react";
+import { Mic, CreditCard, Settings, ChevronLeft, ChevronRight, BarChart3, X, Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -12,6 +12,10 @@ const navItems = [
   { href: "/dashboard/analysis", icon: BarChart3, label: "Analysis" },
   { href: "/dashboard/usage", icon: CreditCard, label: "Usage" },
   { href: "/dashboard/settings", icon: Settings, label: "Settings" },
+];
+
+const adminItems = [
+  { href: "/dashboard/admin/billing", icon: Shield, label: "Billing Admin" },
 ];
 
 interface SidebarProps {
@@ -37,6 +41,12 @@ interface SidebarProps {
  */
 export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }: SidebarProps) {
   const pathname = usePathname();
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  // Check for admin key in localStorage
+  useEffect(() => {
+    setIsAdmin(!!localStorage.getItem("admin-api-key"));
+  }, []);
 
   // Close the mobile drawer on Escape.
   useEffect(() => {
@@ -59,9 +69,10 @@ export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }: Side
   }, [mobileOpen]);
 
   // Shared nav list — one source of truth, rendered inside both modes.
+  const allItems = isAdmin ? [...navItems, ...adminItems] : navItems;
   const navList = (onNavigate?: () => void) => (
     <nav className="flex-1 space-y-1 p-2">
-      {navItems.map(({ href, icon: Icon, label }) => {
+      {allItems.map(({ href, icon: Icon, label }) => {
         const active = pathname.startsWith(href);
         return (
           <Link
