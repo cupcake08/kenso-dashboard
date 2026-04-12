@@ -67,8 +67,6 @@ const DEMO_SCHEDULES: AnalysisSchedule[] = [
   },
 ];
 
-// cronToHuman is imported from @/lib/cron
-
 // Returns a human-readable relative time string anchored on `now` so multiple
 // calls during a single render tick stay consistent.
 function formatRelative(iso: string | undefined, now: number): string {

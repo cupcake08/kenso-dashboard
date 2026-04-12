@@ -31,6 +31,8 @@ export async function adminFetch<T>(path: string, opts?: RequestInit): Promise<T
     throw new Error(body.error?.message || `Request failed: ${res.status}`);
   }
 
-  const json = await res.json();
+  const text = await res.text();
+  if (!text) return {} as T;
+  const json = JSON.parse(text);
   return json.data ?? json;
 }

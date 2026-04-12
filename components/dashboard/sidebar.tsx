@@ -27,18 +27,6 @@ interface SidebarProps {
   onMobileClose: () => void;
 }
 
-/**
- * Responsive sidebar.
- *
- * - Below md (768px): hidden off-screen by default; slides in as a full-height
- *   drawer when mobileOpen is true. Backdrop dims the rest of the screen and
- *   dismisses the drawer on tap. Escape key also closes.
- * - md and up: rendered as a static flex-child <aside> with the classic
- *   collapse-to-icons behavior driven by `collapsed`.
- *
- * One component, two modes, no display:none hiding — the drawer uses fixed
- * positioning + translate-x so it doesn't occupy layout space on mobile.
- */
 export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }: SidebarProps) {
   const pathname = usePathname();
   const [isAdmin, setIsAdmin] = useState(false);

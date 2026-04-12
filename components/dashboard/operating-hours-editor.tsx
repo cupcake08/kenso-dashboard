@@ -504,5 +504,3 @@ export function OperatingHoursEditor({
   );
 }
 
-// ── DAYS export for use in summarizeHours ──────────────────────────────────────
-export { DAYS, DAY_SHORT };

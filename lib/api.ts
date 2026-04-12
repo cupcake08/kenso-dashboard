@@ -53,7 +53,6 @@ export async function apiFetch<T>(
   return (json?.data ?? json) as T;
 }
 
-// Enterprise API — Firebase auth, unwraps {"data": ...} envelope
 export async function entFetch<T>(
   path: string,
   opts?: RequestInit
@@ -81,8 +80,6 @@ export async function entFetch<T>(
   const json = JSON.parse(text);
   return (json?.data ?? json ?? {}) as T;
 }
-
-// --- Enterprise onboarding ---
 
 export interface WhoamiResponse {
   uid: string;
@@ -113,8 +110,6 @@ export async function getSubscriptionStatus(): Promise<RawSubscriptionStatus | n
     return null;
   }
 }
-
-// --- Response normalizers (backend snake_case/unix → UI-friendly shapes) ---
 
 function unixToISO(unix: number): string {
   return new Date(unix * 1000).toISOString();
@@ -183,8 +178,6 @@ export function normalizeCredits(raw: RawCreditsResponse): {
     })),
   };
 }
-
-// --- Analysis API ---
 
 export function normalizeTemplate(raw: RawAnalysisTemplate): AnalysisTemplate {
   return {
@@ -351,8 +344,6 @@ export async function rotateAPIKey(): Promise<string> {
   return res.api_key;
 }
 
-// --- Enterprise device management ---
-
 export async function enableMic(companyId: string, micId: string): Promise<unknown> {
   return entFetch(`/v2/enterprise/companies/${companyId}/mics/${micId}/enable`, {
     method: "PATCH",
@@ -367,15 +358,9 @@ export async function disableMic(companyId: string, micId: string): Promise<unkn
   });
 }
 
-// --- Operating Hours ---
-
 export async function listOperatingHours(): Promise<OperatingSchedule[]> {
   const raw = await apiFetch<OperatingSchedule[] | null>("/operating-hours");
   return raw ?? [];
-}
-
-export async function getOperatingHours(shopId: string): Promise<OperatingSchedule> {
-  return apiFetch<OperatingSchedule>(`/operating-hours/${shopId}`);
 }
 
 export async function upsertOperatingHours(shopId: string, body: {
@@ -387,10 +372,6 @@ export async function upsertOperatingHours(shopId: string, body: {
     method: "PUT",
     body: JSON.stringify(body),
   });
-}
-
-export async function deleteOperatingHours(shopId: string): Promise<void> {
-  await apiFetch(`/operating-hours/${shopId}`, { method: "DELETE" });
 }
 
 export async function pauseOperatingHours(shopId: string, pausedUntil: string, reason?: string): Promise<{ shop_id: string; status: string }> {
@@ -405,8 +386,6 @@ export async function resumeOperatingHours(shopId: string): Promise<{ shop_id: s
     method: "PATCH",
   });
 }
-
-// --- Schedule Management ---
 
 export async function createSchedule(body: {
   template_id: string;

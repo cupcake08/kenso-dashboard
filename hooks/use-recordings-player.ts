@@ -48,10 +48,7 @@ export function useRecordingsPlayer(deviceId: string) {
     buffering: false,
   });
 
-  // ── Refs that stay current (avoid stale closures in callbacks) ──
-  // These solve BUG 3/4/5: toggle, skip, seekTo, maybeEndPlayback, and
-  // scheduleAhead now read from refs instead of React state, making them
-  // stable (not recreated every rAF frame) and always current.
+  // Refs for stable callback access (avoids stale closures in rAF loop)
   const currentTimeRef = useRef(0);
   const totalDurationRef = useRef(0);
   const segmentsRef = useRef<Segment[]>([]);
@@ -113,7 +110,6 @@ export function useRecordingsPlayer(deviceId: string) {
     setState((s) => ({ ...s, totalDuration: total }));
   }, [segments]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       cancelAnimationFrame(rafRef.current);
@@ -358,9 +354,6 @@ export function useRecordingsPlayer(deviceId: string) {
     setState((s) => ({ ...s, playing: false }));
   }, [stopAll]);
 
-  // FIX BUG 2: When at end (within 0.5s of totalDuration), restart from 0.
-  // FIX BUG 3: Uses currentTimeRef (always fresh) instead of state.currentTime
-  // (stale closure that was also recreating this callback every rAF frame).
   const toggle = useCallback(() => {
     if (playingRef.current) {
       pause();
@@ -370,7 +363,6 @@ export function useRecordingsPlayer(deviceId: string) {
     }
   }, [pause, playFrom]);
 
-  // FIX BUG 3: Uses currentTimeRef instead of state.currentTime.
   const seekTo = useCallback((globalSeconds: number) => {
     const total = totalDurationRef.current;
     if (total <= 0) return;
@@ -389,16 +381,12 @@ export function useRecordingsPlayer(deviceId: string) {
     }
   }, [playFrom]);
 
-  // FIX BUG 3: Uses currentTimeRef instead of state.currentTime.
   const skip = useCallback((seconds: number) => {
     seekTo(currentTimeRef.current + seconds);
   }, [seekTo]);
 
-  // FIX BUG 1: Speed change snapshots the current global position and resets
-  // wall-clock anchors. Without this, updateTime's formula
-  //   elapsed = (wallDelta / 1000) * newSpeed
-  // would retroactively apply the new speed to ALL elapsed time, not just
-  // the time after the speed change.
+  // Snapshot current position before changing speed — without this,
+  // updateTime would retroactively apply the new speed to all elapsed time.
   const cycleSpeed = useCallback(() => {
     const currentIdx = SPEEDS.indexOf(speedRef.current as typeof SPEEDS[number]);
     const next = SPEEDS[(currentIdx + 1) % SPEEDS.length];

@@ -9,7 +9,6 @@ export interface RawAnalysisTemplate {
   is_builtin: boolean;
   company_id: string;
   icon: string;
-  domain_persona?: string;
 }
 
 export interface RawAnalysisJob {

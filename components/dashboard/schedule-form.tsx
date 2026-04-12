@@ -158,15 +158,11 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
     });
   }, []);
 
-  const effectiveMicIds = useCallback((): string[] => selectedMicIds, [selectedMicIds]);
-
-  // Credit estimate (debounced)
-  // Strategy: query YESTERDAY's same analysis window in the target timezone.
-  // If yesterday had audio, show "~N credits per run — based on yesterday's audio".
-  // If not, fall back to a theoretical estimate assuming 50% voice activity.
+  // Credit estimate: query yesterday's audio in the target timezone.
+  // If yesterday had audio, show "~N credits per run". Otherwise, estimate 50% voice activity.
   useEffect(() => {
     let cancelled = false;
-    const mics = effectiveMicIds();
+    const mics = selectedMicIds;
     if (!templateId || mics.length === 0 || !analysisStart || !analysisEnd) {
       setEstimate(null);
       setEstimateSource(null);
@@ -258,7 +254,7 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
     }, 600);
 
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [templateId, analysisStart, analysisEnd, effectiveMicIds, templates, timezone]);
+  }, [templateId, analysisStart, analysisEnd, selectedMicIds, templates, timezone]);
 
   function toggleDay(day: number) {
     setSelectedDays((prev) => prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]);

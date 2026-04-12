@@ -5,8 +5,7 @@ import { CheckCircle2, XCircle, Loader2, Coins, Building2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
+import { adminFetch } from "@/lib/admin-api";
 
 interface PendingTopup {
   id: string;
@@ -21,28 +20,6 @@ function formatDate(unix: number): string {
     day: "numeric", month: "short", year: "numeric",
     hour: "2-digit", minute: "2-digit",
   });
-}
-
-async function adminFetch<T>(path: string, opts?: RequestInit): Promise<T> {
-  const key = localStorage.getItem("admin-api-key") ?? "";
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...opts,
-    headers: {
-      "Content-Type": "application/json",
-      "X-Admin-API-Key": key,
-      ...opts?.headers,
-    },
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    let message = text || `HTTP ${res.status}`;
-    try { message = JSON.parse(text)?.error?.message || message; } catch { /* */ }
-    throw new Error(message);
-  }
-  const text = await res.text();
-  if (!text) return [] as unknown as T;
-  const json = JSON.parse(text);
-  return (json?.data ?? json ?? []) as T;
 }
 
 export default function AdminTopupsPage() {

@@ -28,7 +28,6 @@ export function useListenLive(deviceId: string, shopId: string) {
     return saved ? parseFloat(saved) : 3.0;
   });
 
-  // Cleanup on unmount (user navigates away)
   useEffect(() => {
     return () => {
       clientRef.current?.disconnect();
@@ -36,7 +35,6 @@ export function useListenLive(deviceId: string, shopId: string) {
     };
   }, []);
 
-  // Cleanup on browser tab close
   useEffect(() => {
     const onUnload = () => clientRef.current?.disconnect();
     window.addEventListener("beforeunload", onUnload);
@@ -92,7 +90,6 @@ export function useListenLive(deviceId: string, shopId: string) {
     clientRef.current?.setVolume(v);
   }, []);
 
-  // Sync volume when client reconnects
   useEffect(() => {
     clientRef.current?.setVolume(volume);
   }, [state, volume]);

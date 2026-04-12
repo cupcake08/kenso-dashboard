@@ -147,7 +147,6 @@ export class ListenClient {
         const event = msg.event ?? msg.event_type;
         if (event === "publisher_disconnected") {
           const reason = (msg.state as string) || "disconnected";
-          console.log("[Listen] Publisher disconnected (%s), resetting PC for re-offer", reason);
           this.resetPeerConnection();
           this.opts.onStateChange("reconnecting");
           this.opts.onPublisherDisconnected?.(reason);

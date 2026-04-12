@@ -12,15 +12,6 @@ interface TopbarProps {
   onMobileMenuToggle: () => void;
 }
 
-/**
- * Responsive top bar.
- *
- * - Below md: shows a hamburger (left) + compact logo (center) + avatar (right).
- *   The hamburger toggles the sidebar drawer. The logo gives back the brand
- *   presence we'd otherwise lose by hiding the sidebar.
- * - md and up: hamburger hidden, logo hidden (it's in the sidebar), only the
- *   user avatar sits on the right — same as before.
- */
 export function Topbar({ onMobileMenuToggle }: TopbarProps) {
   const [user, setUser] = useState<User | null>(null);
 
