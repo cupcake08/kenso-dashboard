@@ -4,7 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { Loader2, ArrowLeft, AlertTriangle, Info, CheckCircle2, Clock, BarChart3, Sparkles, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { getJob, cancelJob } from "@/lib/api";
-import type { AnalysisJob, AnalysisFinding, AnalysisUtterance, AnalysisHighlight } from "@/types/analysis";
+import type { AnalysisJob, AnalysisFinding, AnalysisHighlight } from "@/types/analysis";
 import { BadgeVariant } from "@/components/ui/badge-variant";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,21 +35,7 @@ const DEMO_JOB: AnalysisJob = {
 The back-room staff maintained consistent activity throughout. One notable interaction at 14:22 showed excellent de-escalation of a customer complaint about billing — the staff member offered alternatives and resolved the issue within 3 minutes.
 
 Areas for improvement: product knowledge around the new premium line was inconsistent, with 3 customer queries redirected to a manager. Upselling was attempted in only 8% of eligible transactions, below the 20% target.`,
-    transcript: [
-      { absoluteTime: new Date(Date.now() - 86400000).toISOString(), segmentId: "seg_1", offsetMs: 0, durationMs: 4500, speaker: "Staff_1", text: "Good morning! Welcome to our store. How can I help you today?" },
-      { absoluteTime: new Date(Date.now() - 86400000 + 5000).toISOString(), segmentId: "seg_1", offsetMs: 5000, durationMs: 8000, speaker: "Customer", text: "Hi, I'm looking for a wireless speaker. Something with good bass, under 5000 rupees preferably." },
-      { absoluteTime: new Date(Date.now() - 86400000 + 14000).toISOString(), segmentId: "seg_1", offsetMs: 14000, durationMs: 6000, speaker: "Staff_1", text: "Sure! We have the SoundMax 200 which is very popular. It has 20W output and connects via Bluetooth 5.0. It's priced at 3,499 right now." },
-      { absoluteTime: new Date(Date.now() - 86400000 + 21000).toISOString(), segmentId: "seg_1", offsetMs: 21000, durationMs: 4000, speaker: "Customer", text: "That sounds good. Does it have warranty?" },
-      { absoluteTime: new Date(Date.now() - 86400000 + 26000).toISOString(), segmentId: "seg_1", offsetMs: 26000, durationMs: 5000, speaker: "Staff_1", text: "Yes, one year manufacturer warranty. I can also show you the Pro version if you're interested — it's on sale." },
-      { absoluteTime: new Date(Date.now() - 86400000 + 32000).toISOString(), segmentId: "seg_2", offsetMs: 32000, durationMs: 3000, speaker: "Customer", text: "Hmm, what's the price difference?" },
-      { absoluteTime: new Date(Date.now() - 86400000 + 36000).toISOString(), segmentId: "seg_2", offsetMs: 36000, durationMs: 7000, speaker: "Staff_1", text: "The Pro is 4,999, normally 6,999. It has 40W output and waterproofing. Very good deal actually." },
-      { absoluteTime: new Date(Date.now() - 86400000 + 44000).toISOString(), segmentId: "seg_2", offsetMs: 44000, durationMs: 3000, speaker: "Customer", text: "Okay I'll take the Pro one." },
-      { absoluteTime: new Date(Date.now() - 86400000 + 48000).toISOString(), segmentId: "seg_2", offsetMs: 48000, durationMs: 4000, speaker: "Staff_1", text: "Great choice! Would you like to pay by card or UPI?" },
-      { absoluteTime: new Date(Date.now() - 86400000 + 53000).toISOString(), segmentId: "seg_2", offsetMs: 53000, durationMs: 2000, speaker: "Customer", text: "UPI please." },
-      { absoluteTime: new Date(Date.now() - 86400000 + 56000).toISOString(), segmentId: "seg_2", offsetMs: 56000, durationMs: 3000, speaker: "Staff_1", text: "Here's the QR code. Take your time." },
-      { absoluteTime: new Date(Date.now() - 86400000 + 60000).toISOString(), segmentId: "seg_3", offsetMs: 60000, durationMs: 5000, speaker: "Customer", text: "Done! Payment went through. Can I get a bag please?" },
-      { absoluteTime: new Date(Date.now() - 86400000 + 66000).toISOString(), segmentId: "seg_3", offsetMs: 66000, durationMs: 4000, speaker: "Staff_1", text: "Of course! Here you go. Thank you for shopping with us. Have a great day!" },
-    ],
+    transcript: [],
     findings: [
       {
         absoluteTime: new Date(Date.now() - 86400000 + 36000).toISOString(), segmentId: "seg_2", offsetMs: 36000, category: "sales", severity: "info",
@@ -179,19 +165,7 @@ function HighlightRow({ highlight }: { highlight: AnalysisHighlight }) {
   );
 }
 
-function UtteranceRow({ utterance }: { utterance: AnalysisUtterance }) {
-  return (
-    <div className="flex items-start gap-3 py-2.5 border-b border-border last:border-0">
-      <span className="text-xs font-mono text-muted-foreground w-20 flex-shrink-0 pt-0.5">
-        {formatTime(utterance.absoluteTime)}
-      </span>
-      <span className="text-xs font-medium text-primary flex-shrink-0 w-16 truncate">{utterance.speaker}</span>
-      <p className="text-sm text-foreground">{utterance.text}</p>
-    </div>
-  );
-}
-
-type Tab = "summary" | "findings" | "highlights" | "transcript";
+type Tab = "summary" | "findings" | "highlights";
 
 export default function JobDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -326,7 +300,6 @@ export default function JobDetailPage() {
     { key: "summary", label: "Summary" },
     { key: "findings", label: "Findings", count: result?.findings.length },
     { key: "highlights", label: "Highlights", count: result?.highlights.length },
-    { key: "transcript", label: "Transcript", count: result?.transcript.length },
   ];
 
   return (
@@ -493,18 +466,6 @@ export default function JobDetailPage() {
             </div>
           )}
 
-          {tab === "transcript" && (
-            <div className="rounded-xl border border-border bg-card/50 divide-y divide-border max-h-[600px] overflow-y-auto">
-              {result.transcript.length === 0 ? (
-                <div className="p-8 text-center">
-                  <BarChart3 className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                  <p className="text-sm text-muted-foreground">No transcript available.</p>
-                </div>
-              ) : (
-                result.transcript.map((u, i) => <UtteranceRow key={i} utterance={u} />)
-              )}
-            </div>
-          )}
         </>
       )}
 
