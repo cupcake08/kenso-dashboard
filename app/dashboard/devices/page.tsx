@@ -32,6 +32,7 @@ export default function DevicesPage() {
   );
 
   // SWR: company ID for enable/disable actions
+  // Synthetic SWR key — fetcher calls whoami() directly, not apiFetch("/_whoami_company")
   const { data: companyId = "" } = useApi<string>(
     isDemoMode ? null : "/_whoami_company",
     async () => {
@@ -47,14 +48,23 @@ export default function DevicesPage() {
     if (!companyId) return;
     setTogglingDeviceId(device.device_id);
     try {
+      // Optimistic update — show new state instantly, revalidate in background
+      const optimistic = devices.map((d) =>
+        d.device_id === device.device_id
+          ? { ...d, status: (action === "enable" ? "online" : "offline") as Device["status"] }
+          : d,
+      );
+      mutate(optimistic, { revalidate: false });
+
       if (action === "enable") {
         await enableMic(companyId, device.device_id);
       } else {
         await disableMic(companyId, device.device_id);
       }
-      mutate(); // revalidate devices list
+      mutate(); // revalidate with actual server state
       toast.success(action === "enable" ? "Device enabled" : "Device disabled");
     } catch (err: unknown) {
+      mutate(); // rollback — refetch actual state
       const msg = err instanceof Error ? err.message : `Failed to ${action} device`;
       toast.error(msg);
     } finally {
