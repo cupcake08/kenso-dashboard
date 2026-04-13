@@ -172,7 +172,7 @@ export default function AnalysisPage() {
         <div className="flex items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 px-5 py-3">
           <Gift className="h-5 w-5 text-primary shrink-0" />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-foreground">{credits.toLocaleString()} trial credits remaining</p>
+            <p className="text-sm font-medium text-foreground">{(credits / 60).toFixed(1)}h trial hours remaining</p>
             {trialEndsAt && (
               <p className="text-xs text-muted-foreground">
                 Trial ends {new Date(trialEndsAt).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}
