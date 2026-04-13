@@ -49,9 +49,11 @@ export interface RawWindowUtterance {
 
 export interface RawCreditsResponse {
   balance: number;
+  balance_hours?: number;
   plan: string;
   subscription_state?: string;
   trial_ends_at_unix?: number;
+  overage_rate_per_hour_inr?: number;
   history: RawTransaction[];
 }
 

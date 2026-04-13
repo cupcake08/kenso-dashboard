@@ -337,7 +337,7 @@ export function AnalysisModal({ open, onClose, onJobCreated, templates, initialT
         const estimatedHours = Math.round(durMin / 6) / 10;
         const estimatedCostInr = Math.round(durMin / 60 * 40);
         setEstimate({
-          estimatedCredits: Math.round(durMin * selectedMics.length * (selectedTemplate.complexityMultiplier ?? 1) * 10) / 10,
+          estimatedCredits: Math.ceil(durMin * selectedMics.length),
           estimatedDurationMin: durMin,
           totalAudioDurationMs: durMin * 60000,
           hasAudio: true,
