@@ -163,14 +163,18 @@ export function normalizeWindowDetail(raw: RawWindowDetail): WindowDetail {
 
 export function normalizeCredits(raw: RawCreditsResponse): {
   balance: number;
+  balanceHours: number;
   subscriptionState?: string;
   trialEndsAt?: string;
+  overageRatePerHourInr: number;
   transactions: Transaction[];
 } {
   return {
     balance: raw.balance,
+    balanceHours: raw.balance_hours ?? raw.balance / 60,
     subscriptionState: raw.subscription_state,
     trialEndsAt: raw.trial_ends_at_unix ? unixToISO(raw.trial_ends_at_unix) : undefined,
+    overageRatePerHourInr: raw.overage_rate_per_hour_inr ?? 40,
     transactions: raw.history.map((t) => ({
       id: t.id,
       type: t.type,

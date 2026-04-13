@@ -97,7 +97,7 @@ export default function AnalysisPage() {
   const { data: creditsData } = useApi<ReturnType<typeof normalizeCredits>>(
     IS_DEMO ? null : "/credits",
     async (url) => normalizeCredits(await apiFetch<RawCreditsResponse>(url)),
-    { fallbackData: IS_DEMO ? { balance: 24850, subscriptionState: "trialing", trialEndsAt: new Date(Date.now() + 14 * 86400000).toISOString(), transactions: [] } : undefined },
+    { fallbackData: IS_DEMO ? { balance: 24850, balanceHours: 414.2, subscriptionState: "trialing", trialEndsAt: new Date(Date.now() + 14 * 86400000).toISOString(), overageRatePerHourInr: 40, transactions: [] } : undefined },
   );
 
   const credits = creditsData?.balance ?? 0;
