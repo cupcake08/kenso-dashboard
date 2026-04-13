@@ -143,6 +143,29 @@ export interface PlanResponse {
   price_per_month: number;
 }
 
+// GET /v2/dashboard/usage
+export interface UsageResponse {
+  plan_id: string;
+  plan_display_name: string;
+  commitment_level: string;
+  total_devices: number;
+  analyze_devices: number;
+  listen_devices: number;
+  included_hours_per_device: number;
+  total_included_hours: number;
+  used_hours: number;
+  remaining_hours: number;
+  usage_percent: number;
+  monthly_rate_per_device_inr: number;
+  overage_rate_per_hour_inr: number;
+  total_monthly_inr: number;
+  pool_balance_minutes: number;
+  pool_period: string;
+  subscription_state: string;
+  period_start?: string;
+  period_end?: string;
+}
+
 // GET /v2/dashboard/subscription-status
 export interface RawSubscriptionStatus {
   state: string;

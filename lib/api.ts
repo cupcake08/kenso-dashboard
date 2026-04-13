@@ -2,6 +2,7 @@ import { auth } from "./firebase";
 import type {
   RawDevice, RawWindowSummary, RawWindowDetail, RawCreditsResponse,
   RawSubscriptionStatus, Device, WindowSummary, WindowDetail, Transaction,
+  UsageResponse,
 } from "@/types/api";
 import type {
   RawAnalysisTemplate, RawAnalysisJob, RawEstimateResponse, RawAnalysisSchedule,
@@ -327,6 +328,8 @@ export async function estimateCredits(body: {
     estimatedDurationMin: raw.estimated_duration_min,
     totalAudioDurationMs: raw.total_audio_duration_ms,
     hasAudio: raw.has_audio,
+    estimatedHours: raw.estimated_hours ?? raw.estimated_credits / 60,
+    estimatedCostInr: raw.estimated_cost_inr ?? Math.round(raw.estimated_credits / 60 * 40),
   };
 }
 
@@ -416,4 +419,8 @@ export async function pauseSchedule(scheduleId: string, pausedUntil: string, rea
 
 export async function resumeSchedule(scheduleId: string): Promise<void> {
   await apiFetch(`/analysis/schedules/${scheduleId}/resume`, { method: "PATCH" });
+}
+
+export async function fetchUsage(): Promise<UsageResponse> {
+  return apiFetch<UsageResponse>("/usage");
 }
