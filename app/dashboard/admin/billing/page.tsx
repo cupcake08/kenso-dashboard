@@ -4,10 +4,11 @@ import { useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Shield, ChevronRight, Loader2, Play, AlertTriangle,
-  Receipt, CreditCard, CheckCircle2, Clock, XCircle, Mic,
+  Receipt, CreditCard, CheckCircle2, Clock, XCircle, Mic, Sparkles, Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { adminFetch, getAdminKey, setAdminKey, hasAdminKey } from "@/lib/admin-api";
+import { toast } from "sonner";
 
 /* ── Types ── */
 
@@ -23,6 +24,7 @@ interface CompanyItem {
 interface Subscription {
   state: string;
   plan_id: string;
+  commitment_level?: string;
   trial_ends_at: string;
   period_start: string;
   period_end: string;
@@ -32,6 +34,13 @@ interface Subscription {
     overage_charges_inr: string;
     last_rolled_up_at: string;
   };
+}
+
+interface ActivateResponse {
+  credits_seeded?: number;
+  analyze_devices?: number;
+  listen_devices?: number;
+  message?: string;
 }
 
 interface Invoice {
@@ -208,6 +217,36 @@ function CompanyDetail({ companyId, companyName, onRefresh }: {
     }
   };
 
+  const activate = async () => {
+    const commitment_level = prompt("Commitment level (monthly/quarterly/annual):", "monthly");
+    if (!commitment_level) return;
+    const plan_id = prompt("Plan ID:", "analyze");
+    if (!plan_id) return;
+    setActionLoading("activate");
+    try {
+      const res = await adminFetch<ActivateResponse>(
+        `/v2/admin/companies/${companyId}/subscription/activate`,
+        {
+          method: "POST",
+          body: JSON.stringify({ commitment_level, plan_id }),
+        },
+      );
+      await load();
+      onRefresh();
+      const details = [
+        res.credits_seeded !== undefined && `${res.credits_seeded} credits seeded`,
+        res.analyze_devices !== undefined && `${res.analyze_devices} analyze devices`,
+        res.listen_devices !== undefined && `${res.listen_devices} listen devices`,
+        res.message,
+      ].filter(Boolean).join(" · ");
+      alert(`Activated${details ? `: ${details}` : ""}. Device tiers auto-set by activation.`);
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setActionLoading("");
+    }
+  };
+
   const createInvoice = async () => {
     const desc = prompt("Description:", "Monthly subscription");
     if (!desc) return;
@@ -276,9 +315,12 @@ function CompanyDetail({ companyId, companyName, onRefresh }: {
           <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Subscription</h4>
           {sub ? (
             <div className="rounded-lg border border-border bg-card/30 p-3 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className={`text-xs px-2 py-0.5 rounded-full ${subBadge!.cls}`}>{subBadge!.label}</span>
-                {sub.plan_id && <span className="text-[0.6875rem] text-muted-foreground">{sub.plan_id}</span>}
+              <div className="flex items-center justify-between gap-2">
+                <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${subBadge!.cls}`}>{subBadge!.label}</span>
+                <div className="flex items-center gap-2 ml-auto">
+                  {sub.plan_id && <span className="text-[0.6875rem] text-muted-foreground">{sub.plan_id}</span>}
+                  {sub.commitment_level && <span className="text-[0.6875rem] text-muted-foreground/50">{sub.commitment_level}</span>}
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-2 text-[0.6875rem]">
                 {sub.state === "trialing" && (
@@ -298,13 +340,23 @@ function CompanyDetail({ companyId, companyName, onRefresh }: {
                   </div>
                 )}
               </div>
+              <div className="pt-1">
+                <Button size="sm" variant="outline" onClick={activate} disabled={!!actionLoading} className="h-7 text-xs">
+                  {actionLoading === "activate" ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Zap className="h-3 w-3 mr-1" /> Activate / Migrate</>}
+                </Button>
+              </div>
             </div>
           ) : (
-            <div className="flex items-center justify-between rounded-lg border border-dashed border-border bg-card/20 p-3">
+            <div className="flex items-center justify-between gap-2 rounded-lg border border-dashed border-border bg-card/20 p-3">
               <p className="text-sm text-muted-foreground">No subscription</p>
-              <Button size="sm" onClick={startTrial} disabled={!!actionLoading}>
-                {actionLoading === "trial" ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Play className="h-3 w-3 mr-1" /> Start Trial</>}
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="outline" onClick={startTrial} disabled={!!actionLoading} className="h-7 text-xs">
+                  {actionLoading === "trial" ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Play className="h-3 w-3 mr-1" /> Start Trial</>}
+                </Button>
+                <Button size="sm" onClick={activate} disabled={!!actionLoading} className="h-7 text-xs">
+                  {actionLoading === "activate" ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Zap className="h-3 w-3 mr-1" /> Activate</>}
+                </Button>
+              </div>
             </div>
           )}
         </div>
@@ -370,6 +422,7 @@ export default function AdminBillingPage() {
   const [companies, setCompanies] = useState<CompanyItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [seedingPlans, setSeedingPlans] = useState(false);
 
   const loadCompanies = useCallback(async () => {
     setLoading(true);
@@ -382,6 +435,18 @@ export default function AdminBillingPage() {
       setLoading(false);
     }
   }, []);
+
+  const seedPlans = async () => {
+    setSeedingPlans(true);
+    try {
+      await adminFetch("/v2/admin/plans/seed", { method: "POST" });
+      toast.success("Plans seeded successfully");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to seed plans");
+    } finally {
+      setSeedingPlans(false);
+    }
+  };
 
   useEffect(() => {
     if (hasAdminKey()) {
@@ -396,9 +461,15 @@ export default function AdminBillingPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <Shield className="h-5 w-5 text-primary" />
-        <h1 className="text-lg font-semibold text-foreground">Billing Admin</h1>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Shield className="h-5 w-5 text-primary" />
+          <h1 className="text-lg font-semibold text-foreground">Billing Admin</h1>
+        </div>
+        <Button size="sm" variant="outline" onClick={seedPlans} disabled={seedingPlans} className="h-8 text-xs">
+          {seedingPlans ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}
+          Seed Plans
+        </Button>
       </div>
 
       {loading ? (

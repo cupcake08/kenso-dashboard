@@ -155,7 +155,7 @@ function FindingCard({ finding }: { finding: AnalysisFinding }) {
 
 function HighlightRow({ highlight }: { highlight: AnalysisHighlight }) {
   return (
-    <div className="flex items-start gap-3 py-2.5 border-b border-border last:border-0">
+    <div className="flex items-start gap-3 px-4 py-2.5 border-b border-border last:border-0">
       <span className="text-xs font-mono text-muted-foreground w-20 flex-shrink-0 pt-0.5">
         {formatTime(highlight.absoluteTime)}
       </span>
