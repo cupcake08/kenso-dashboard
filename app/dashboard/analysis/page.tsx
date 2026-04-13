@@ -3,11 +3,12 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { BarChart3, Shield, Users, TrendingUp, Plus, Loader2, ChevronRight, Gift, CalendarClock } from "lucide-react";
+import { BarChart3, Shield, Users, TrendingUp, Plus, Loader2, ChevronRight, Gift, CalendarClock, Lock } from "lucide-react";
 import { listTemplates, listJobs, apiFetch, normalizeCredits } from "@/lib/api";
 import type { AnalysisTemplate, AnalysisJob } from "@/types/analysis";
 import type { RawCreditsResponse } from "@/types/api";
 import { useApi } from "@/hooks/use-api";
+import { useSubscription } from "@/hooks/use-subscription";
 import { BadgeVariant } from "@/components/ui/badge-variant";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -71,6 +72,7 @@ function costLabel(multiplier: number): string {
 export default function AnalysisPage() {
   const router = useRouter();
   const [showJobs, setShowJobs] = useState(JOBS_PER_PAGE);
+  const { hasAnalysis, isLoading: subLoading } = useSubscription();
 
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
@@ -101,7 +103,7 @@ export default function AnalysisPage() {
   const credits = creditsData?.balance ?? 0;
   const subState = creditsData?.subscriptionState ?? "";
   const trialEndsAt = creditsData?.trialEndsAt ?? "";
-  const loading = templatesLoading;
+  const loading = templatesLoading || subLoading;
   const error = templatesError?.message ?? "";
 
   function openModal(template?: AnalysisTemplate) {
@@ -185,127 +187,145 @@ export default function AnalysisPage() {
         </div>
       )}
 
-      {/* Template Grid */}
-      <div>
-        <h2 className="text-xs font-medium uppercase tracking-widest text-muted-foreground mb-4">Templates</h2>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {templates.map((t) => {
-            const Icon = CATEGORY_ICONS[t.category] ?? BarChart3;
-            return (
-              <button
-                key={t.templateId}
-                onClick={() => openModal(t)}
-                className="rounded-xl border border-border bg-card/50 p-5 text-left hover:border-primary/40 hover:bg-primary/5 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-              >
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
-                    <Icon className="h-4.5 w-4.5 text-primary" />
-                  </div>
-                  {t.isBuiltin && (
-                    <BadgeVariant variant="blue" className="text-xs">Built-in</BadgeVariant>
-                  )}
-                </div>
-                <p className="font-medium text-foreground text-sm mb-1">{t.name}</p>
-                <p className="text-xs text-muted-foreground line-clamp-2">{t.description}</p>
-                <p className="mt-3 text-xs text-muted-foreground">{costLabel(t.complexityMultiplier)}</p>
-              </button>
-            );
-          })}
+      {/* Listen-tier upgrade prompt */}
+      {!hasAnalysis && !IS_DEMO && (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <Lock className="h-12 w-12 text-muted-foreground/40 mb-4" />
+          <h2 className="text-lg font-semibold mb-2">AI Analysis Not Available</h2>
+          <p className="text-sm text-muted-foreground max-w-md mb-6">
+            Your Listen plan includes recording and live monitoring. Upgrade to the Analyze plan to unlock AI-powered audio analysis.
+          </p>
+          <Button asChild>
+            <Link href="/dashboard/usage">View Plans</Link>
+          </Button>
         </div>
-      </div>
+      )}
+
+      {/* Template Grid */}
+      {(hasAnalysis || IS_DEMO) && (
+        <div>
+          <h2 className="text-xs font-medium uppercase tracking-widest text-muted-foreground mb-4">Templates</h2>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {templates.map((t) => {
+              const Icon = CATEGORY_ICONS[t.category] ?? BarChart3;
+              return (
+                <button
+                  key={t.templateId}
+                  onClick={() => openModal(t)}
+                  className="rounded-xl border border-border bg-card/50 p-5 text-left hover:border-primary/40 hover:bg-primary/5 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                >
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
+                      <Icon className="h-4.5 w-4.5 text-primary" />
+                    </div>
+                    {t.isBuiltin && (
+                      <BadgeVariant variant="blue" className="text-xs">Built-in</BadgeVariant>
+                    )}
+                  </div>
+                  <p className="font-medium text-foreground text-sm mb-1">{t.name}</p>
+                  <p className="text-xs text-muted-foreground line-clamp-2">{t.description}</p>
+                  <p className="mt-3 text-xs text-muted-foreground">{costLabel(t.complexityMultiplier)}</p>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Recent Jobs */}
-      <div>
-        <h2 className="text-xs font-medium uppercase tracking-widest text-muted-foreground mb-4">Recent Jobs</h2>
-        {jobs.length === 0 ? (
-          <div className="rounded-xl border border-border bg-card/30 p-10 text-center">
-            <BarChart3 className="h-7 w-7 text-muted-foreground/30 mx-auto mb-3" />
-            <p className="text-sm font-medium text-foreground/70">No analysis jobs yet</p>
-            <p className="text-xs text-muted-foreground/50 mt-1">Select a template above to get started</p>
-          </div>
-        ) : (
-          <>
-            {/* Desktop table */}
-            <div className="hidden sm:block rounded-xl border border-border overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="border-b border-border bg-muted/20">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Template</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Time Range</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Status</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Credits</th>
-                    <th className="px-4 py-3" />
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/50">
-                  {visibleJobs.map((job) => (
-                    <tr
-                      key={job.jobId}
-                      className="hover:bg-muted/10 cursor-pointer transition-colors"
-                      onClick={() => router.push(`/dashboard/analysis/jobs/${job.jobId}`)}
-                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); router.push(`/dashboard/analysis/jobs/${job.jobId}`); }}}
-                      tabIndex={0}
-                      role="link"
-                      aria-label={`${job.templateName} — ${job.status}`}
-                    >
-                      <td className="px-4 py-3">
-                        <span className="font-medium text-foreground">{job.templateName}</span>
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground text-xs tabular-nums">
-                        {formatTimeRange(job.timeRangeStart, job.timeRangeEnd)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <BadgeVariant variant={(STATUS_COLORS[job.status] as "emerald") ?? "slate"} className="capitalize text-xs">
-                          {job.status}
-                        </BadgeVariant>
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground tabular-nums">
-                        {job.actualCredits > 0 ? job.actualCredits : job.estimatedCredits}
-                      </td>
-                      <td className="px-4 py-3">
-                        <ChevronRight className="h-4 w-4 text-muted-foreground/40" />
-                      </td>
+      {(hasAnalysis || IS_DEMO) && (
+        <div>
+          <h2 className="text-xs font-medium uppercase tracking-widest text-muted-foreground mb-4">Recent Jobs</h2>
+          {jobs.length === 0 ? (
+            <div className="rounded-xl border border-border bg-card/30 p-10 text-center">
+              <BarChart3 className="h-7 w-7 text-muted-foreground/30 mx-auto mb-3" />
+              <p className="text-sm font-medium text-foreground/70">No analysis jobs yet</p>
+              <p className="text-xs text-muted-foreground/50 mt-1">Select a template above to get started</p>
+            </div>
+          ) : (
+            <>
+              {/* Desktop table */}
+              <div className="hidden sm:block rounded-xl border border-border overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="border-b border-border bg-muted/20">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Template</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Time Range</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Status</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Credits</th>
+                      <th className="px-4 py-3" />
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Mobile card list */}
-            <div className="sm:hidden space-y-2">
-              {visibleJobs.map((job) => (
-                <Link
-                  key={job.jobId}
-                  href={`/dashboard/analysis/jobs/${job.jobId}`}
-                  className="flex items-center gap-3 rounded-xl border border-border bg-card/50 p-4 hover:bg-muted/10 transition-colors"
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{job.templateName}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5 tabular-nums">
-                      {formatTimeRange(job.timeRangeStart, job.timeRangeEnd)}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <BadgeVariant variant={(STATUS_COLORS[job.status] as "emerald") ?? "slate"} className="capitalize text-xs">
-                      {job.status}
-                    </BadgeVariant>
-                    <ChevronRight className="h-4 w-4 text-muted-foreground/40" />
-                  </div>
-                </Link>
-              ))}
-            </div>
-
-            {/* Pagination */}
-            {jobs.length > showJobs && (
-              <div className="mt-3 text-center">
-                <Button variant="ghost" size="sm" onClick={() => setShowJobs((s) => s + JOBS_PER_PAGE)} className="text-xs text-muted-foreground">
-                  Show more ({jobs.length - showJobs} remaining)
-                </Button>
+                  </thead>
+                  <tbody className="divide-y divide-border/50">
+                    {visibleJobs.map((job) => (
+                      <tr
+                        key={job.jobId}
+                        className="hover:bg-muted/10 cursor-pointer transition-colors"
+                        onClick={() => router.push(`/dashboard/analysis/jobs/${job.jobId}`)}
+                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); router.push(`/dashboard/analysis/jobs/${job.jobId}`); }}}
+                        tabIndex={0}
+                        role="link"
+                        aria-label={`${job.templateName} — ${job.status}`}
+                      >
+                        <td className="px-4 py-3">
+                          <span className="font-medium text-foreground">{job.templateName}</span>
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground text-xs tabular-nums">
+                          {formatTimeRange(job.timeRangeStart, job.timeRangeEnd)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <BadgeVariant variant={(STATUS_COLORS[job.status] as "emerald") ?? "slate"} className="capitalize text-xs">
+                            {job.status}
+                          </BadgeVariant>
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground tabular-nums">
+                          {job.actualCredits > 0 ? job.actualCredits : job.estimatedCredits}
+                        </td>
+                        <td className="px-4 py-3">
+                          <ChevronRight className="h-4 w-4 text-muted-foreground/40" />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            )}
-          </>
-        )}
-      </div>
+
+              {/* Mobile card list */}
+              <div className="sm:hidden space-y-2">
+                {visibleJobs.map((job) => (
+                  <Link
+                    key={job.jobId}
+                    href={`/dashboard/analysis/jobs/${job.jobId}`}
+                    className="flex items-center gap-3 rounded-xl border border-border bg-card/50 p-4 hover:bg-muted/10 transition-colors"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">{job.templateName}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5 tabular-nums">
+                        {formatTimeRange(job.timeRangeStart, job.timeRangeEnd)}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <BadgeVariant variant={(STATUS_COLORS[job.status] as "emerald") ?? "slate"} className="capitalize text-xs">
+                        {job.status}
+                      </BadgeVariant>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground/40" />
+                    </div>
+                  </Link>
+                ))}
+              </div>
+
+              {/* Pagination */}
+              {jobs.length > showJobs && (
+                <div className="mt-3 text-center">
+                  <Button variant="ghost" size="sm" onClick={() => setShowJobs((s) => s + JOBS_PER_PAGE)} className="text-xs text-muted-foreground">
+                    Show more ({jobs.length - showJobs} remaining)
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       {/* Modal (extracted component) */}
       <AnalysisModal
@@ -315,6 +335,7 @@ export default function AnalysisPage() {
         templates={templates}
         initialTemplate={modalTemplate}
         initialStep={modalStep}
+        balance={credits}
       />
     </div>
   );

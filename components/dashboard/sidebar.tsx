@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mic, CreditCard, Settings, ChevronLeft, ChevronRight, BarChart3, X, Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useSubscription } from "@/hooks/use-subscription";
 
 const navItems = [
   { href: "/dashboard/devices", icon: Mic, label: "Devices" },
@@ -30,6 +31,7 @@ interface SidebarProps {
 export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }: SidebarProps) {
   const pathname = usePathname();
   const [isAdmin, setIsAdmin] = useState(false);
+  const { planName, isLoading: subLoading } = useSubscription();
 
   // Check for admin key in localStorage
   useEffect(() => {
@@ -107,14 +109,21 @@ export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }: Side
         <div className={cn("flex h-14 items-center border-b border-border", collapsed ? "justify-center px-2" : "gap-2.5 px-4")}>
           <Image src="/logo.png" alt="KnownSense.AI" width={28} height={28} className="flex-shrink-0" />
           {!collapsed && (
-            <motion.span
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="text-sm font-bold text-foreground tracking-tight whitespace-nowrap"
+              className="flex items-center gap-1.5 min-w-0"
             >
-              KnownSense.AI
-            </motion.span>
+              <span className="text-sm font-bold text-foreground tracking-tight whitespace-nowrap">
+                KnownSense.AI
+              </span>
+              {!subLoading && (
+                <span className="text-[0.625rem] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium shrink-0">
+                  {planName}
+                </span>
+              )}
+            </motion.div>
           )}
         </div>
         {navList()}
@@ -157,6 +166,11 @@ export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }: Side
                 <div className="flex items-center gap-2.5">
                   <Image src="/logo.png" alt="KnownSense.AI" width={28} height={28} />
                   <span className="text-sm font-bold text-foreground tracking-tight">KnownSense.AI</span>
+                  {!subLoading && (
+                    <span className="text-[0.625rem] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">
+                      {planName}
+                    </span>
+                  )}
                 </div>
                 <button
                   type="button"

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { BarChart3, Shield, Users, TrendingUp, Zap, Loader2, CheckCircle2, X, Check, Cpu } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -246,9 +247,11 @@ interface Props {
   templates: AnalysisTemplate[];
   initialTemplate?: AnalysisTemplate | null;
   initialStep?: number;
+  /** Current credit balance in minutes (used to show insufficient-credits warning) */
+  balance?: number;
 }
 
-export function AnalysisModal({ open, onClose, onJobCreated, templates, initialTemplate, initialStep }: Props) {
+export function AnalysisModal({ open, onClose, onJobCreated, templates, initialTemplate, initialStep, balance }: Props) {
   const [step, setStep] = useState(initialStep ?? 0);
   const [selectedTemplate, setSelectedTemplate] = useState<AnalysisTemplate | null>(initialTemplate ?? null);
   const [selectedMics, setSelectedMics] = useState<string[]>([]);
@@ -652,12 +655,22 @@ export function AnalysisModal({ open, onClose, onJobCreated, templates, initialT
                     </div>
                   </div>
                 )}
+                {estimate.hasAudio && balance !== undefined && balance < estimate.estimatedCredits && (
+                  <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3 text-sm text-destructive mb-3">
+                    Not enough hours remaining ({(balance / 60).toFixed(1)}h available, {estimate.estimatedHours.toFixed(1)}h needed).{" "}
+                    <Link href="/dashboard/usage" className="underline">Top up</Link>
+                  </div>
+                )}
                 {submitError && (
                   <p className="text-sm text-red-400 mb-3" role="alert">{submitError}</p>
                 )}
                 <div className="flex gap-2">
                   <Button variant="outline" className="flex-1" onClick={() => setStep(3)}>Back</Button>
-                  <Button className="flex-1" onClick={submitJob} disabled={!estimate.hasAudio || submitting}>
+                  <Button
+                    className="flex-1"
+                    onClick={submitJob}
+                    disabled={!estimate.hasAudio || submitting || (balance !== undefined && balance < estimate.estimatedCredits)}
+                  >
                     {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
                     Run Analysis
                   </Button>
