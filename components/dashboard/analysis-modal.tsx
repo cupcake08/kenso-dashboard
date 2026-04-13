@@ -649,7 +649,7 @@ export function AnalysisModal({ open, onClose, onJobCreated, templates, initialT
                           {estimate.estimatedHours.toFixed(1)}h
                         </span>
                         <span className="text-muted-foreground text-xs ml-1">
-                          (~\u20B9{Math.round(estimate.estimatedCostInr)})
+                          (~₹{Math.round(estimate.estimatedCostInr)})
                         </span>
                       </div>
                     </div>

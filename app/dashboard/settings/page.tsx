@@ -182,16 +182,16 @@ export default function SettingsPage() {
           {monthlyRatePerDevice != null && analyzeDevices != null ? (
             <div className="space-y-1 mt-1">
               <p className="text-sm text-muted-foreground">
-                \u20B9{monthlyRatePerDevice.toLocaleString("en-IN")}/device/month
+                ₹{monthlyRatePerDevice.toLocaleString("en-IN")}/device/month
               </p>
               {totalMonthly != null && (
                 <p className="text-base font-semibold text-foreground">
-                  \u20B9{totalMonthly.toLocaleString("en-IN")}/month
+                  ₹{totalMonthly.toLocaleString("en-IN")}/month
                 </p>
               )}
               {overageRate != null && (
                 <p className="text-xs text-muted-foreground/70 mt-1">
-                  \u20B9{overageRate}/hour beyond included
+                  ₹{overageRate}/hour beyond included
                 </p>
               )}
             </div>

@@ -293,7 +293,7 @@ export default function UsagePage() {
                 </p>
               )}
               <p className="pt-1 text-base font-semibold text-foreground">
-                \u20B9{usage.total_monthly_inr.toLocaleString("en-IN")}/month
+                ₹{usage.total_monthly_inr.toLocaleString("en-IN")}/month
               </p>
             </div>
           </div>
@@ -318,13 +318,13 @@ export default function UsagePage() {
             </div>
             <div className="flex justify-between px-5 py-3.5 text-sm">
               <span className="text-muted-foreground">Overage rate</span>
-              <span className="text-foreground tabular-nums font-medium">\u20B9{overageRate}/hour beyond included</span>
+              <span className="text-foreground tabular-nums font-medium">₹{overageRate}/hour beyond included</span>
             </div>
             {usage.period_start && usage.period_end && (
               <div className="flex justify-between px-5 py-3.5 text-sm">
                 <span className="text-muted-foreground">Period</span>
                 <span className="text-foreground tabular-nums">
-                  {formatDate(usage.period_start)} \u2192 {formatDate(usage.period_end)}
+                  {formatDate(usage.period_start)} → {formatDate(usage.period_end)}
                 </span>
               </div>
             )}
@@ -403,9 +403,9 @@ export default function UsagePage() {
                   <p className="text-sm text-muted-foreground">
                     <span className="text-foreground font-medium tabular-nums">{selectedHours}h</span>
                     <span className="mx-1.5 text-muted-foreground/40">&times;</span>
-                    <span className="text-foreground font-medium">\u20B9{overageRate}</span>
+                    <span className="text-foreground font-medium">₹{overageRate}</span>
                     <span className="mx-1.5 text-muted-foreground/40">=</span>
-                    <span className="text-foreground font-semibold tabular-nums">\u20B9{(selectedHours * overageRate).toLocaleString("en-IN")}</span>
+                    <span className="text-foreground font-semibold tabular-nums">₹{(selectedHours * overageRate).toLocaleString("en-IN")}</span>
                   </p>
                 )}
               </div>
