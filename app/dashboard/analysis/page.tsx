@@ -145,18 +145,20 @@ export default function AnalysisPage() {
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">Analysis</h1>
           <p className="mt-1 text-sm text-muted-foreground">Run AI-powered analysis on your audio recordings</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" asChild>
-            <Link href="/dashboard/analysis/schedules">
-              <CalendarClock className="h-4 w-4 mr-2" />
-              Schedules
-            </Link>
-          </Button>
-          <Button onClick={() => openModal()}>
-            <Plus className="h-4 w-4 mr-2" />
-            New Analysis
-          </Button>
-        </div>
+        {(hasAnalysis !== false || IS_DEMO) && (
+          <div className="flex items-center gap-2">
+            <Button variant="outline" asChild>
+              <Link href="/dashboard/analysis/schedules">
+                <CalendarClock className="h-4 w-4 mr-2" />
+                Schedules
+              </Link>
+            </Button>
+            <Button onClick={() => openModal()}>
+              <Plus className="h-4 w-4 mr-2" />
+              New Analysis
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Error banner */}
@@ -187,8 +189,8 @@ export default function AnalysisPage() {
         </div>
       )}
 
-      {/* Listen-tier upgrade prompt */}
-      {!hasAnalysis && !IS_DEMO && (
+      {/* Listen-tier upgrade prompt (only when we know the tier, not on loading/error) */}
+      {hasAnalysis === false && !IS_DEMO && (
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <Lock className="h-12 w-12 text-muted-foreground/40 mb-4" />
           <h2 className="text-lg font-semibold mb-2">AI Analysis Not Available</h2>
@@ -202,7 +204,7 @@ export default function AnalysisPage() {
       )}
 
       {/* Template Grid */}
-      {(hasAnalysis || IS_DEMO) && (
+      {(hasAnalysis !== false || IS_DEMO) && (
         <div>
           <h2 className="text-xs font-medium uppercase tracking-widest text-muted-foreground mb-4">Templates</h2>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -233,7 +235,7 @@ export default function AnalysisPage() {
       )}
 
       {/* Recent Jobs */}
-      {(hasAnalysis || IS_DEMO) && (
+      {(hasAnalysis !== false || IS_DEMO) && (
         <div>
           <h2 className="text-xs font-medium uppercase tracking-widest text-muted-foreground mb-4">Recent Jobs</h2>
           {jobs.length === 0 ? (
