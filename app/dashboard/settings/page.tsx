@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { auth } from "@/lib/firebase";
 import { apiFetch, normalizeDevice, generateAPIKey, rotateAPIKey } from "@/lib/api";
-import type { Device, PlanResponse, RawDevice, RawPlanResponse } from "@/types/api";
+import type { Device, PlanResponse, RawDevice, RawPlanResponse, UsageResponse } from "@/types/api";
 import { useApi } from "@/hooks/use-api";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import type { User as FirebaseUser } from "firebase/auth";
 
-const DEMO_PLAN: PlanResponse = { plan: "Enterprise", billing_cycle: "prepaid", price_per_month: 29900 };
+const DEMO_PLAN: PlanResponse = { plan: "Analyze Pro", billing_cycle: "prepaid", price_per_month: 99900 };
+const DEMO_USAGE_PLAN: Partial<UsageResponse> = {
+  plan_display_name: "Analyze Pro",
+  commitment_level: "Annual",
+  monthly_rate_per_device_inr: 999,
+  overage_rate_per_hour_inr: 40,
+  total_monthly_inr: 2997,
+  analyze_devices: 3,
+  included_hours_per_device: 100,
+};
 const DEMO_DEVICES_SETTINGS: Device[] = [
   { device_id: "dev_001", shop_id: "shop_001", label: "Store - Koramangala", location: "Bangalore", status: "streaming", last_seen_at: new Date().toISOString() },
 ];
@@ -36,11 +45,18 @@ export default function SettingsPage() {
   const [apiKeyLoading, setApiKeyLoading] = useState(false);
   const [savedOk, setSavedOk] = useState<string | null>(null);
 
-  // SWR: plan info
+  // SWR: plan info (legacy format)
   const { data: plan = null } = useApi<PlanResponse | null>(
     isDemoMode ? null : "/billing/plan",
     async (url) => apiFetch<RawPlanResponse>(url).catch(() => null),
     { fallbackData: isDemoMode ? DEMO_PLAN : null },
+  );
+
+  // SWR: usage — provides enriched plan fields (commitment level, overage rate, etc.)
+  const { data: usagePlan } = useApi<Partial<UsageResponse>>(
+    isDemoMode ? null : "/usage",
+    async (url) => apiFetch<UsageResponse>(url).catch(() => ({})),
+    { fallbackData: isDemoMode ? DEMO_USAGE_PLAN : {} },
   );
 
   // SWR: devices (shared cache key with devices list page)
@@ -107,10 +123,17 @@ export default function SettingsPage() {
     );
   }
 
-  const planName = plan?.plan ?? "Free";
-  const priceLabel = plan?.price_per_month
+  // Prefer enriched usage-plan data, fall back to legacy plan fields
+  const planName = usagePlan?.plan_display_name ?? plan?.plan ?? "Free";
+  const commitmentLevel = usagePlan?.commitment_level ?? "";
+  const overageRate = usagePlan?.overage_rate_per_hour_inr;
+  const monthlyRatePerDevice = usagePlan?.monthly_rate_per_device_inr;
+  const totalMonthly = usagePlan?.total_monthly_inr;
+  const analyzeDevices = usagePlan?.analyze_devices;
+  // Legacy fallback price label (old format uses paise, new format uses INR directly)
+  const legacyPriceLabel = plan?.price_per_month
     ? `\u20B9${(plan.price_per_month / 100).toLocaleString()}/mo`
-    : "Free";
+    : null;
   const billingLabel = plan?.billing_cycle === "postpaid" ? "Postpaid" : "Prepaid";
 
   return (
@@ -148,8 +171,35 @@ export default function SettingsPage() {
             <CreditCard className="h-3.5 w-3.5 text-muted-foreground" />
             <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">Plan</p>
           </div>
-          <p className="text-xl font-bold text-foreground tracking-tight capitalize leading-snug">{planName}</p>
-          <p className="text-sm text-muted-foreground mt-1.5 leading-none">{billingLabel} · {priceLabel}</p>
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            <p className="text-xl font-bold text-foreground tracking-tight capitalize leading-snug">{planName}</p>
+            {commitmentLevel && (
+              <span className="text-[0.6875rem] font-medium px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 shrink-0">
+                {commitmentLevel}
+              </span>
+            )}
+          </div>
+          {monthlyRatePerDevice != null && analyzeDevices != null ? (
+            <div className="space-y-1 mt-1">
+              <p className="text-sm text-muted-foreground">
+                \u20B9{monthlyRatePerDevice.toLocaleString("en-IN")}/device/month
+              </p>
+              {totalMonthly != null && (
+                <p className="text-base font-semibold text-foreground">
+                  \u20B9{totalMonthly.toLocaleString("en-IN")}/month
+                </p>
+              )}
+              {overageRate != null && (
+                <p className="text-xs text-muted-foreground/70 mt-1">
+                  \u20B9{overageRate}/hour beyond included
+                </p>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground mt-1.5 leading-none">
+              {legacyPriceLabel ?? "Free"} · {billingLabel}
+            </p>
+          )}
         </motion.div>
       </div>
 
