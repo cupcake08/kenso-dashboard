@@ -214,6 +214,8 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
           estimatedDurationMin: windowMinutes * VOICE_ACTIVITY_RATIO,
           totalAudioDurationMs: windowMinutes * VOICE_ACTIVITY_RATIO * 60000,
           hasAudio: true,
+          estimatedHours: Math.round(windowMinutes / 6) / 10,
+          estimatedCostInr: Math.round(windowMinutes / 60 * 40),
         });
         setEstimateSource("theoretical");
       }
@@ -243,6 +245,8 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
             estimatedDurationMin: windowMinutes * VOICE_ACTIVITY_RATIO,
             totalAudioDurationMs: windowMinutes * VOICE_ACTIVITY_RATIO * 60000,
             hasAudio: false,
+            estimatedHours: Math.round(windowMinutes / 6) / 10,
+            estimatedCostInr: Math.round(windowMinutes / 60 * 40),
           });
           setEstimateSource("theoretical");
         }

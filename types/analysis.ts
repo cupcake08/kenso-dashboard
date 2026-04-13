@@ -75,6 +75,8 @@ export interface RawEstimateResponse {
   estimated_duration_min: number;
   total_audio_duration_ms: number;
   has_audio: boolean;
+  estimated_hours?: number;
+  estimated_cost_inr?: number;
 }
 
 export interface RawAnalysisSchedule {
@@ -206,6 +208,8 @@ export interface EstimateResult {
   estimatedDurationMin: number;
   totalAudioDurationMs: number;
   hasAudio: boolean;
+  estimatedHours: number;
+  estimatedCostInr: number;
 }
 
 // --- Operating Hours ---

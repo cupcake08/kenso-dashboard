@@ -334,11 +334,15 @@ export function AnalysisModal({ open, onClose, onJobCreated, templates, initialT
       if (process.env.NEXT_PUBLIC_DEMO_MODE === "true") {
         await new Promise((r) => setTimeout(r, 600));
         const durMin = (new Date(rangeEnd).getTime() - new Date(rangeStart).getTime()) / 60000;
+        const estimatedHours = Math.round(durMin / 6) / 10;
+        const estimatedCostInr = Math.round(durMin / 60 * 40);
         setEstimate({
           estimatedCredits: Math.round(durMin * selectedMics.length * (selectedTemplate.complexityMultiplier ?? 1) * 10) / 10,
           estimatedDurationMin: durMin,
           totalAudioDurationMs: durMin * 60000,
           hasAudio: true,
+          estimatedHours,
+          estimatedCostInr,
         });
         setStep(4);
         return;
@@ -391,7 +395,7 @@ export function AnalysisModal({ open, onClose, onJobCreated, templates, initialT
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to create job";
       if (msg.includes("insufficient credits")) {
-        toast.error("Not enough credits. Top up to run analysis.");
+        toast.error("Not enough hours remaining. Top up to run analysis.");
       }
       setSubmitError(msg);
     } finally {
@@ -635,9 +639,16 @@ export function AnalysisModal({ open, onClose, onJobCreated, templates, initialT
                       <span className="text-foreground tabular-nums">{selectedMics.length}</span>
                     </div>
                     <div className="h-px bg-border" />
-                    <div className="flex justify-between text-sm font-medium">
+                    <div className="flex justify-between items-center text-sm font-medium">
                       <span className="text-foreground">Estimated cost</span>
-                      <span className="text-primary text-lg tabular-nums">{estimate.estimatedCredits} credits</span>
+                      <div className="text-right">
+                        <span className="text-primary text-lg tabular-nums font-semibold">
+                          {estimate.estimatedHours.toFixed(1)}h
+                        </span>
+                        <span className="text-muted-foreground text-xs ml-1">
+                          (~\u20B9{Math.round(estimate.estimatedCostInr)})
+                        </span>
+                      </div>
                     </div>
                   </div>
                 )}
