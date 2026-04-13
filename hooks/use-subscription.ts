@@ -35,7 +35,9 @@ export function useSubscription() {
     isTrialing,
     remainingHours,
     hasCredits,
-    planName: data?.plan_display_name ?? (isLoading ? "" : ""),
+    planName: isTrialing ? "Free Trial"
+      : subState === "trial_ended" ? "Trial Ended"
+      : data?.plan_display_name || (isLoading ? "" : ""),
     commitmentLevel: data?.commitment_level ?? "monthly",
     subscriptionState: subState,
   };
