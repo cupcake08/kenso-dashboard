@@ -254,7 +254,7 @@ export default function AnalysisPage() {
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Template</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Time Range</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Status</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Credits</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Hours</th>
                       <th className="px-4 py-3" />
                     </tr>
                   </thead>
@@ -281,7 +281,7 @@ export default function AnalysisPage() {
                           </BadgeVariant>
                         </td>
                         <td className="px-4 py-3 text-muted-foreground tabular-nums">
-                          {job.actualCredits > 0 ? job.actualCredits : job.estimatedCredits}
+                          {((job.actualCredits > 0 ? job.actualCredits : job.estimatedCredits) / 60).toFixed(1)}h
                         </td>
                         <td className="px-4 py-3">
                           <ChevronRight className="h-4 w-4 text-muted-foreground/40" />

@@ -218,8 +218,13 @@ function CompanyDetail({ companyId, companyName, onRefresh }: {
   };
 
   const activate = async () => {
-    const commitment_level = prompt("Commitment level (monthly/quarterly/annual):", "monthly");
+    const VALID_COMMITMENTS = ["monthly", "quarterly", "annual"] as const;
+    const commitment_level = prompt("Commitment level (monthly / quarterly / annual):", "monthly");
     if (!commitment_level) return;
+    if (!VALID_COMMITMENTS.includes(commitment_level as typeof VALID_COMMITMENTS[number])) {
+      alert(`Invalid commitment level "${commitment_level}". Must be: monthly, quarterly, or annual.`);
+      return;
+    }
     const plan_id = prompt("Plan ID:", "analyze");
     if (!plan_id) return;
     setActionLoading("activate");

@@ -247,14 +247,16 @@ export default function UsagePage() {
               </div>
             </div>
 
-            <Button
-              onClick={() => setShowTopup(true)}
-              size="lg"
-              className="bg-primary hover:bg-primary/90 shrink-0"
-            >
-              <TrendingUp className="h-4 w-4 mr-2" />
-              Top Up
-            </Button>
+            {usage?.subscription_state === "active" && (
+              <Button
+                onClick={() => setShowTopup(true)}
+                size="lg"
+                className="bg-primary hover:bg-primary/90 shrink-0"
+              >
+                <TrendingUp className="h-4 w-4 mr-2" />
+                Top Up
+              </Button>
+            )}
           </div>
         </div>
       </motion.div>
