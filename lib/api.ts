@@ -9,6 +9,9 @@ import type {
   AnalysisTemplate, AnalysisJob, EstimateResult, AnalysisSchedule,
   OperatingSchedule, DaySchedule, DeviceOverride,
 } from "@/types/analysis";
+import type {
+  BusinessType, BusinessTypeState, BusinessTypeSuggestion, CompanyFeatures,
+} from "@/types/company";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
@@ -427,4 +430,58 @@ export async function resumeSchedule(scheduleId: string): Promise<void> {
 
 export async function fetchUsage(): Promise<UsageResponse> {
   return apiFetch<UsageResponse>("/usage");
+}
+
+// ── Company / Business-Type endpoints ────────────────────────────────────────
+
+export async function getBusinessType(): Promise<BusinessTypeState> {
+  const raw = await apiFetch<{ business_type?: string; source?: string; set_at_unix?: number }>(
+    "/company/business-type"
+  );
+  return {
+    businessType: (raw.business_type ?? "") as BusinessType,
+    source: (raw.source ?? "") as BusinessTypeState["source"],
+    setAtUnix: raw.set_at_unix,
+  };
+}
+
+export async function patchBusinessType(bt: BusinessType): Promise<void> {
+  await apiFetch("/company/business-type", {
+    method: "PATCH",
+    body: JSON.stringify({ business_type: bt }),
+  });
+}
+
+export async function getBusinessTypeSuggestion(): Promise<BusinessTypeSuggestion | null> {
+  const raw = await apiFetch<{ suggestion?: { vertical: string; confidence: number; reason: string; created_at_unix?: number } | null }>(
+    "/company/business-type/suggestion"
+  );
+  if (!raw?.suggestion) return null;
+  const s = raw.suggestion;
+  return {
+    vertical: s.vertical as BusinessTypeSuggestion["vertical"],
+    confidence: s.confidence,
+    reason: s.reason,
+    createdAtUnix: s.created_at_unix ?? 0,
+  };
+}
+
+export async function confirmBusinessTypeSuggestion(): Promise<void> {
+  await apiFetch("/company/business-type/suggestion/confirm", { method: "POST" });
+}
+
+export async function dismissBusinessTypeSuggestion(): Promise<void> {
+  await apiFetch("/company/business-type/suggestion/dismiss", { method: "POST" });
+}
+
+export async function patchCompanyDescription(description: string): Promise<void> {
+  await apiFetch("/company/description", {
+    method: "PATCH",
+    body: JSON.stringify({ description }),
+  });
+}
+
+export async function getCompanyFeatures(): Promise<CompanyFeatures> {
+  const raw = await apiFetch<CompanyFeatures | null>("/company/features");
+  return raw ?? {};
 }
