@@ -485,3 +485,36 @@ export async function getCompanyFeatures(): Promise<CompanyFeatures> {
   const raw = await apiFetch<CompanyFeatures | null>("/company/features");
   return raw ?? {};
 }
+
+// --- Admin endpoints ---
+// Admin routes live under /v2/admin/ (not /v2/dashboard/admin/) — so they must
+// go through entFetch (which takes a full path), not apiFetch (which prepends
+// /v2/dashboard). Gated server-side by RequireAdminAPIKey.
+
+export type AnalysisJobDebug = {
+  job_id: string;
+  prompt_version: string;
+  model_name: string;
+  duration_ms: number;
+  token_usage: unknown;
+  raw_gemini_response: string;
+  system_prompt_text: string;
+  user_prompt_text: string;
+};
+
+/**
+ * Fetch admin debug view for an analysis job. Requires an admin API key — the
+ * caller must ensure the request is authorized out-of-band (e.g. an admin-only
+ * page with its own auth layer). This function does NOT inject the admin key;
+ * callers add it via the `adminApiKey` parameter, which is attached as
+ * `X-Admin-API-Key` to match the server's RequireAdminAPIKey middleware.
+ */
+export async function getAnalysisJobDebug(
+  jobId: string,
+  adminApiKey: string,
+): Promise<AnalysisJobDebug> {
+  return entFetch<AnalysisJobDebug>(
+    `/v2/admin/analysis-jobs/${encodeURIComponent(jobId)}/debug`,
+    { headers: { "X-Admin-API-Key": adminApiKey } },
+  );
+}
