@@ -201,16 +201,10 @@ export default function SchedulesPage() {
       // string falls through to formatRelative's "—" placeholder.
       const demoNextRunAt = computeDemoNextRunAt(data) ?? "";
       if (formMode === "new") {
-        const tmplNames: Record<string, string> = {
-          tmpl_staff: "Staff Performance Review",
-          tmpl_compliance: "Compliance Audit",
-          tmpl_customer: "Customer Sentiment Analysis",
-          tmpl_sales: "Sales Performance Tracker",
-        };
         const newSched: AnalysisSchedule = {
           scheduleId: `sched_demo_${Date.now()}`,
-          templateId: data.template_id,
-          templateName: tmplNames[data.template_id] ?? data.template_id,
+          templateId: "",
+          templateName: "",
           micIds: data.mic_ids ?? [],
           shopIds: data.shop_ids ?? [],
           scheduleType: data.schedule_type,
@@ -232,7 +226,6 @@ export default function SchedulesPage() {
             s.scheduleId === editingSchedule.scheduleId
               ? {
                   ...s,
-                  templateId: data.template_id,
                   micIds: data.mic_ids ?? [],
                   shopIds: data.shop_ids ?? [],
                   scheduleType: data.schedule_type,
@@ -255,7 +248,6 @@ export default function SchedulesPage() {
 
     if (formMode === "new") {
       await createSchedule({
-        template_id: data.template_id,
         mic_ids: data.mic_ids,
         shop_ids: data.shop_ids,
         schedule_type: data.schedule_type,

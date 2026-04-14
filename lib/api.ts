@@ -494,7 +494,7 @@ export async function resumeOperatingHours(shopId: string): Promise<{ shop_id: s
 }
 
 export async function createSchedule(body: {
-  template_id: string;
+  template_id?: string;
   mic_ids?: string[];
   shop_ids?: string[];
   schedule_type: string;

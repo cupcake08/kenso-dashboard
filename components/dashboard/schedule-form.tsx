@@ -4,9 +4,9 @@ import { useState, useEffect, useCallback } from "react";
 import { Loader2, Check, Zap, ChevronDown, Moon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { listTemplates, estimateCredits, apiFetch, normalizeDevice } from "@/lib/api";
+import { estimateCredits, apiFetch, normalizeDevice } from "@/lib/api";
 import { parseCron } from "@/lib/cron";
-import type { AnalysisTemplate, AnalysisSchedule, EstimateResult } from "@/types/analysis";
+import type { AnalysisSchedule, EstimateResult } from "@/types/analysis";
 import type { Device, RawDevice } from "@/types/api";
 
 const IS_DEMO = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
@@ -17,13 +17,6 @@ const DEMO_DEVICES: Device[] = [
   { device_id: "mic_back_03", shop_id: "shop_001", label: "Back Office", location: "Koramangala", status: "offline", last_seen_at: "" },
   { device_id: "mic_floor_01", shop_id: "shop_002", label: "Floor Mic", location: "Indiranagar", status: "online", last_seen_at: "" },
   { device_id: "mic_entry_01", shop_id: "shop_002", label: "Entry Gate", location: "Indiranagar", status: "online", last_seen_at: "" },
-];
-
-const DEMO_TEMPLATES: AnalysisTemplate[] = [
-  { templateId: "tmpl_staff", name: "Staff Performance Review", category: "staff_performance", description: "", complexityMultiplier: 1.2, isBuiltin: true, companyId: "demo", icon: "" },
-  { templateId: "tmpl_customer", name: "Customer Sentiment Analysis", category: "customer_interaction", description: "", complexityMultiplier: 1.0, isBuiltin: true, companyId: "demo", icon: "" },
-  { templateId: "tmpl_compliance", name: "Compliance & Policy Audit", category: "compliance_policy", description: "", complexityMultiplier: 1.5, isBuiltin: true, companyId: "demo", icon: "" },
-  { templateId: "tmpl_sales", name: "Sales Performance Tracker", category: "sales_revenue", description: "", complexityMultiplier: 1.0, isBuiltin: true, companyId: "demo", icon: "" },
 ];
 
 const TIMEZONES = [
@@ -42,7 +35,6 @@ const DAYS = [
 ];
 
 export interface CreateSchedulePayload {
-  template_id: string;
   mic_ids?: string[];
   shop_ids?: string[];
   schedule_type: "recurring" | "one_time";
@@ -113,7 +105,6 @@ function theoreticalEstimate(windowMinutes: number, deviceCount: number, complex
 export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps) {
   const isEdit = !!initial;
 
-  const [templateId, setTemplateId] = useState(initial?.templateId ?? "");
   const [selectedMicIds, setSelectedMicIds] = useState<string[]>(initial?.micIds ?? []);
   const [scheduleType, setScheduleType] = useState<"recurring" | "one_time">(initial?.scheduleType ?? "recurring");
 
@@ -129,7 +120,6 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
   const [showNotes, setShowNotes] = useState(!!initial?.freeTextNotes);
   const [notes, setNotes] = useState(initial?.freeTextNotes ?? "");
 
-  const [templates, setTemplates] = useState<AnalysisTemplate[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
 
@@ -140,22 +130,20 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
 
-  // Load templates + devices in parallel
+  // Load devices
   useEffect(() => {
     if (IS_DEMO) {
-      setTemplates(DEMO_TEMPLATES);
       setDevices(DEMO_DEVICES);
       setDataLoading(false);
       return;
     }
-    Promise.all([
-      listTemplates().catch(() => []),
-      apiFetch<RawDevice[]>("/devices").then((raw) => (raw ?? []).map(normalizeDevice)).catch(() => []),
-    ]).then(([tmpls, devs]) => {
-      setTemplates(tmpls);
-      setDevices(devs);
-      setDataLoading(false);
-    });
+    apiFetch<RawDevice[]>("/devices")
+      .then((raw) => (raw ?? []).map(normalizeDevice))
+      .catch(() => [])
+      .then((devs) => {
+        setDevices(devs);
+        setDataLoading(false);
+      });
   }, []);
 
   // Credit estimate: query yesterday's audio in the target timezone.
@@ -163,7 +151,7 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
   useEffect(() => {
     let cancelled = false;
     const mics = selectedMicIds;
-    if (!templateId || mics.length === 0 || !analysisStart || !analysisEnd) {
+    if (mics.length === 0 || !analysisStart || !analysisEnd) {
       setEstimate(null);
       setEstimateSource(null);
       return;
@@ -202,8 +190,7 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
     if (endUnix <= startUnix) { setEstimate(null); setEstimateSource(null); return; }
 
     const windowMinutes = (endUnix - startUnix) / 60;
-    const tmpl = templates.find((t) => t.templateId === templateId);
-    const multiplier = tmpl?.complexityMultiplier ?? 1;
+    const multiplier = 1;
 
     if (IS_DEMO) {
       if (!cancelled) {
@@ -227,7 +214,6 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
       setEstimating(true);
       try {
         const result = await estimateCredits({
-          template_id: templateId,
           mic_ids: mics,
           shop_ids: [],
           time_range_start_unix: startUnix,
@@ -258,7 +244,7 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
     }, 600);
 
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [templateId, analysisStart, analysisEnd, selectedMicIds, templates, timezone]);
+  }, [analysisStart, analysisEnd, selectedMicIds, timezone]);
 
   function toggleDay(day: number) {
     setSelectedDays((prev) => prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]);
@@ -277,7 +263,7 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
   }
 
   function buildPayload(): CreateSchedulePayload | null {
-    if (!templateId || selectedMicIds.length === 0) return null;
+    if (selectedMicIds.length === 0) return null;
     if (!analysisStart || !analysisEnd) return null;
     // Reject zero-length windows (backend rejects these too; fail fast in UI).
     if (analysisStart === analysisEnd) return null;
@@ -322,7 +308,6 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
     const analysisWindowHours = Math.max(1, Math.ceil(minutesDelta / 60));
 
     return {
-      template_id: templateId,
       mic_ids: selectedMicIds,
       shop_ids: [],
       schedule_type: scheduleType,
@@ -405,34 +390,6 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
       </div>
 
       <div className="px-5 py-5 space-y-5">
-        {/* Template */}
-        <div>
-          <label htmlFor="sched-template" className={label}>Template</label>
-          <div className="mt-1.5">
-            {isEdit ? (
-              <div className="text-[13px] text-foreground h-9 flex items-center px-3 rounded-md bg-muted/30 border border-border">
-                {templates.find((t) => t.templateId === templateId)?.name ?? templateId}
-              </div>
-            ) : (
-              <div className="relative">
-                <select
-                  id="sched-template"
-                  className={cn(field, "appearance-none pr-8 cursor-pointer")}
-                  value={templateId}
-                  onChange={(e) => setTemplateId(e.target.value)}
-                  disabled={dataLoading}
-                >
-                  <option value="">{dataLoading ? "Loading…" : "Select a template"}</option>
-                  {templates.map((t) => (
-                    <option key={t.templateId} value={t.templateId}>{t.name}</option>
-                  ))}
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              </div>
-            )}
-          </div>
-        </div>
-
         {/* Devices */}
         <div>
           <div className="flex items-center justify-between">
