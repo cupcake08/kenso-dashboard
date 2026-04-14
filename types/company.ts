@@ -14,6 +14,7 @@ export type BusinessTypeState = {
   businessType: BusinessType;
   source: BusinessTypeSource;
   setAtUnix?: number;
+  description: string;
 };
 
 export type BusinessTypeSuggestion = {

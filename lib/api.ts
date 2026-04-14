@@ -435,13 +435,14 @@ export async function fetchUsage(): Promise<UsageResponse> {
 // ── Company / Business-Type endpoints ────────────────────────────────────────
 
 export async function getBusinessType(): Promise<BusinessTypeState> {
-  const raw = await apiFetch<{ business_type?: string; source?: string; set_at_unix?: number }>(
+  const raw = await apiFetch<{ business_type?: string; source?: string; set_at_unix?: number; description?: string }>(
     "/company/business-type"
   );
   return {
     businessType: (raw.business_type ?? "") as BusinessType,
     source: (raw.source ?? "") as BusinessTypeState["source"],
     setAtUnix: raw.set_at_unix,
+    description: raw.description ?? "",
   };
 }
 
