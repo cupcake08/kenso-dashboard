@@ -134,7 +134,7 @@ export interface AnalysisJob {
   chunksCompleted: number;
   cached: boolean;
   failureReason?: string;
-  result?: AnalysisResult;
+  result?: AnalysisResult | AnalysisResultV2;
   createdAt: string; // ISO
   completedAt?: string; // ISO
 }

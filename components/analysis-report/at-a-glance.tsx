@@ -22,8 +22,8 @@ function metricsFor(result: AnalysisResultV2): Array<{ label: string; value: str
   }
   return [
     { label: "minutes analyzed", value: result.minutesAnalyzed },
-    { label: "findings", value: result.findings.length },
-    { label: "highlights", value: result.highlights.length },
+    { label: "findings", value: (result.findings ?? []).length },
+    { label: "highlights", value: (result.highlights ?? []).length },
     { label: "avg sentiment", value: result.sentiment.average.toFixed(2) },
   ];
 }

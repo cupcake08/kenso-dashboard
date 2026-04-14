@@ -12,7 +12,7 @@ type Props = {
 
 export function QuoteCard({ reference, footer, hero = false }: Props) {
   return (
-    <div
+    <figure
       className={[
         "rounded-xl border border-border p-5 transition-colors",
         hero ? "bg-card/60" : "bg-card/30",
@@ -26,11 +26,11 @@ export function QuoteCard({ reference, footer, hero = false }: Props) {
       >
         &ldquo;{reference.spanText}&rdquo;
       </blockquote>
-      <div className="flex items-center gap-2 mt-3 text-sm text-muted-foreground">
+      <figcaption className="flex items-center gap-2 mt-3 text-sm text-muted-foreground">
         <ReferencePlayerBtn reference={reference} />
         {reference.context && <span>· {reference.context}</span>}
         {footer && <span className="ml-auto">{footer}</span>}
-      </div>
-    </div>
+      </figcaption>
+    </figure>
   );
 }

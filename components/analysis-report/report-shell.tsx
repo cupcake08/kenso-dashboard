@@ -14,16 +14,6 @@ const DEFAULT_SECTION_ORDER = [
   "recommendations",
 ];
 
-// Placeholder; Task 31 replaces this with a real legacy fallback.
-function LegacyFallbackPlaceholder({ result }: { result: AnalysisResultV2 }) {
-  return (
-    <div className="max-w-3xl mx-auto p-6">
-      <p className="text-sm text-muted-foreground">Legacy analysis — see Task 31 renderer.</p>
-      <p className="mt-4">{result.summary}</p>
-    </div>
-  );
-}
-
 const container = {
   initial: {},
   animate: { transition: { staggerChildren: 0.04, delayChildren: 0.1 } },
@@ -34,10 +24,6 @@ const item = {
 };
 
 export function ReportShell({ result }: { result: AnalysisResultV2 }) {
-  if (!result.vertical) {
-    return <LegacyFallbackPlaceholder result={result} />;
-  }
-
   const sections =
     result.sectionOrder?.length ? result.sectionOrder : DEFAULT_SECTION_ORDER;
 

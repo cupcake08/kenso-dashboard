@@ -631,7 +631,11 @@ export const RecordingsPlayer = memo(function RecordingsPlayer({ deviceId }: { d
 
     window.addEventListener("kenso:play-segment", onPlaySegment);
     return () => window.removeEventListener("kenso:play-segment", onPlaySegment);
-  }, [segments, state.playing, seekTo, play]);
+    // seekTo and play are defined with useCallback in useRecordingsPlayer and are
+    // referentially stable for the component lifetime — omitting them prevents
+    // unnecessary listener teardown/re-registration on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [segments, state.playing]);
 
   // Cumulative audio offsets — bridges audio-time ↔ unix-time for DayTimeline
   const offsets = useMemo(() => {

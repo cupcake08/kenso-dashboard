@@ -4,7 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { Loader2, ArrowLeft, BarChart3, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { getJob, cancelJob } from "@/lib/api";
-import type { AnalysisJob, AnalysisResultV2 } from "@/types/analysis";
+import type { AnalysisJob, AnalysisResult, AnalysisResultV2 } from "@/types/analysis";
 import { BadgeVariant } from "@/components/ui/badge-variant";
 import { Button } from "@/components/ui/button";
 import { ReportShell } from "@/components/analysis-report/report-shell";
@@ -113,6 +113,11 @@ function formatDateTime(iso: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+/** Type guard: V2 results carry a `vertical` field; legacy shape does not. */
+function isV2(r: AnalysisResult | AnalysisResultV2): r is AnalysisResultV2 {
+  return r != null && "vertical" in r;
 }
 
 export default function JobDetailPage() {
@@ -243,7 +248,6 @@ export default function JobDetailPage() {
 
   const isInProgress = ["pending", "estimating", "deducted", "downloading", "processing", "chunking", "synthesizing"].includes(job.status);
   const result = job.result;
-  const hasVertical = Boolean((result as any)?.vertical);
 
   return (
     <div className="space-y-6">
@@ -318,10 +322,11 @@ export default function JobDetailPage() {
         </div>
       )}
 
-      {/* Result — dispatch to ReportShell (v2) or LegacyReport (pre-migration) */}
+      {/* Result — dispatch to ReportShell (v2) or LegacyReport (pre-migration).
+          isV2 narrows via the `vertical` field present on all V2 results. */}
       {result && (
-        hasVertical
-          ? <ReportShell result={result as unknown as AnalysisResultV2} />
+        isV2(result)
+          ? <ReportShell result={result} />
           : <LegacyReport result={result} />
       )}
 
