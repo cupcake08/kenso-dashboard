@@ -6,16 +6,23 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { auth } from "@/lib/firebase";
-import { createCompany, whoami } from "@/lib/api";
+import { createCompany, whoami, patchBusinessType, patchCompanyDescription } from "@/lib/api";
 import { CheckCircle2 } from "lucide-react";
+import { toast } from "sonner";
+import { BusinessTypePicker } from "@/components/onboarding/business-type-picker";
+import type { BusinessType } from "@/types/company";
+
+type Step = "company" | "business_type" | "description" | "success";
 
 export default function OnboardingPage() {
   const router = useRouter();
+  const [step, setStep] = useState<Step>("company");
   const [companyName, setCompanyName] = useState("");
+  const [description, setDescription] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [displayName, setDisplayName] = useState("");
 
@@ -45,7 +52,7 @@ export default function OnboardingPage() {
     });
   }, [router]);
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmitCompany(e: React.FormEvent) {
     e.preventDefault();
     if (!companyName.trim()) return;
     setError("");
@@ -53,12 +60,52 @@ export default function OnboardingPage() {
 
     try {
       await createCompany(companyName.trim());
-      setSuccess(true);
-      setTimeout(() => router.push("/dashboard/devices"), 1000);
+      setStep("business_type");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create organization.");
+    } finally {
       setLoading(false);
     }
+  }
+
+  async function handlePickBusinessType(bt: Exclude<BusinessType, "">) {
+    if (loading) return;
+    setLoading(true);
+    try {
+      await patchBusinessType(bt);
+      setStep("description");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save business type. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleSkipBusinessType() {
+    setStep("description");
+  }
+
+  async function handleSubmitDescription() {
+    if (loading) return;
+    setLoading(true);
+    try {
+      if (description.trim()) {
+        await patchCompanyDescription(description.trim());
+      }
+      completeOnboarding();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save description. Please try again.");
+      setLoading(false);
+    }
+  }
+
+  function handleSkipDescription() {
+    completeOnboarding();
+  }
+
+  function completeOnboarding() {
+    setStep("success");
+    setTimeout(() => router.push("/dashboard/devices"), 1000);
   }
 
   if (!authReady) {
@@ -68,6 +115,9 @@ export default function OnboardingPage() {
       </div>
     );
   }
+
+  // Step indicator segments: 3 steps (company, business_type, description)
+  const stepIndex = step === "company" ? 0 : step === "business_type" ? 1 : 2;
 
   return (
     <div className="flex min-h-screen items-center justify-center p-6">
@@ -79,7 +129,7 @@ export default function OnboardingPage() {
       >
         <Card className="p-8">
           <AnimatePresence mode="wait">
-            {success ? (
+            {step === "success" ? (
               <motion.div
                 key="success"
                 initial={{ opacity: 0, scale: 0.9 }}
@@ -111,11 +161,13 @@ export default function OnboardingPage() {
                   Taking you to your dashboard...
                 </motion.p>
               </motion.div>
-            ) : (
-              <motion.div key="form" exit={{ opacity: 0 }}>
+            ) : step === "company" ? (
+              <motion.div key="company" exit={{ opacity: 0 }}>
                 {/* Step indicator */}
                 <div className="flex items-center gap-2 mb-6">
                   <div className="h-1.5 flex-1 rounded-full bg-primary" />
+                  <div className="h-1.5 flex-1 rounded-full bg-muted" />
+                  <div className="h-1.5 flex-1 rounded-full bg-muted" />
                 </div>
 
                 {displayName && (
@@ -130,7 +182,7 @@ export default function OnboardingPage() {
                   Name your organization to get started. You can change this later.
                 </p>
 
-                <form onSubmit={handleSubmit} className="space-y-4">
+                <form onSubmit={handleSubmitCompany} className="space-y-4">
                   <div>
                     <label htmlFor="company" className="text-sm font-medium text-foreground mb-1.5 block">
                       Organization name
@@ -164,6 +216,86 @@ export default function OnboardingPage() {
                     {loading ? "Setting up..." : "Get Started"}
                   </Button>
                 </form>
+              </motion.div>
+            ) : step === "business_type" ? (
+              <motion.div
+                key="business_type"
+                initial={{ opacity: 0, x: 24 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -24 }}
+                transition={{ duration: 0.3 }}
+              >
+                {/* Step indicator */}
+                <div className="flex items-center gap-2 mb-6">
+                  <div className={`h-1.5 flex-1 rounded-full ${stepIndex >= 0 ? "bg-primary" : "bg-muted"}`} />
+                  <div className={`h-1.5 flex-1 rounded-full ${stepIndex >= 1 ? "bg-primary" : "bg-muted"}`} />
+                  <div className="h-1.5 flex-1 rounded-full bg-muted" />
+                </div>
+
+                <h1 className="text-2xl font-bold text-foreground mb-1">
+                  What kind of business do you run?
+                </h1>
+                <p className="text-sm text-muted-foreground mb-8">
+                  We&apos;ll tune our analysis for you.
+                </p>
+
+                <BusinessTypePicker
+                  onPick={handlePickBusinessType}
+                  onSkip={handleSkipBusinessType}
+                  showSkip={true}
+                />
+              </motion.div>
+            ) : (
+              <motion.div
+                key="description"
+                initial={{ opacity: 0, x: 24 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -24 }}
+                transition={{ duration: 0.3 }}
+              >
+                {/* Step indicator */}
+                <div className="flex items-center gap-2 mb-6">
+                  <div className="h-1.5 flex-1 rounded-full bg-primary" />
+                  <div className="h-1.5 flex-1 rounded-full bg-primary" />
+                  <div className="h-1.5 flex-1 rounded-full bg-primary" />
+                </div>
+
+                <h1 className="text-2xl font-bold text-foreground mb-1">
+                  Anything else we should know?
+                </h1>
+                <p className="text-sm text-muted-foreground mb-8">
+                  Optional — helps our AI understand your context.
+                </p>
+
+                <div className="space-y-4">
+                  <Textarea
+                    placeholder="e.g., Vada House, South Indian breakfast + coffee, 3 tables + counter"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    maxLength={500}
+                    rows={4}
+                    autoFocus
+                  />
+                  <p className="text-xs text-muted-foreground text-right">
+                    {description.length}/500
+                  </p>
+                  <Button
+                    type="button"
+                    className="w-full"
+                    size="lg"
+                    onClick={handleSubmitDescription}
+                    disabled={loading}
+                  >
+                    {loading ? "Saving..." : "Continue"}
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={handleSkipDescription}
+                    className="w-full text-sm text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
+                  >
+                    Skip for now
+                  </button>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
