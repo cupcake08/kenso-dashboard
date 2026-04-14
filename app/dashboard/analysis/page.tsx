@@ -108,7 +108,8 @@ export default function AnalysisPage() {
 
   function openModal(template?: AnalysisTemplate) {
     setModalTemplate(template ?? null);
-    setModalStep(template ? 1 : 0);
+    // Modal no longer has a Template step; always open at the first step (Devices).
+    setModalStep(0);
     setModalOpen(true);
   }
 
