@@ -4,8 +4,9 @@ import { useState } from "react";
 import Link from "next/link";
 import { Lightbulb, X } from "lucide-react";
 import { toast } from "sonner";
+import { useSWRConfig } from "swr";
 import { useBusinessTypeSuggestion } from "@/hooks/use-business-type";
-import { confirmBusinessTypeSuggestion } from "@/lib/api";
+import { confirmBusinessTypeSuggestion, dismissBusinessTypeSuggestion } from "@/lib/api";
 
 const VERTICAL_LABEL: Record<string, string> = {
   restaurant: "a Restaurant",
@@ -17,6 +18,7 @@ const VERTICAL_LABEL: Record<string, string> = {
 
 export function BusinessTypeSuggestBanner() {
   const { suggestion, mutate } = useBusinessTypeSuggestion();
+  const { mutate: globalMutate } = useSWRConfig();
   const [sessionDismissed, setSessionDismissed] = useState(false);
   const [confirming, setConfirming] = useState(false);
 
@@ -30,11 +32,19 @@ export function BusinessTypeSuggestBanner() {
     try {
       await confirmBusinessTypeSuggestion();
       await mutate();
+      await globalMutate("company/business-type");
       toast.success("Thanks — we'll tune future analyses for your business.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to confirm");
       setConfirming(false);
     }
+  }
+
+  async function handleDismiss() {
+    setSessionDismissed(true);
+    try {
+      await dismissBusinessTypeSuggestion();
+    } catch { /* already dismissed locally */ }
   }
 
   return (
@@ -64,7 +74,7 @@ export function BusinessTypeSuggestBanner() {
         </div>
       </div>
       <button
-        onClick={() => setSessionDismissed(true)}
+        onClick={handleDismiss}
         aria-label="Dismiss for this session"
         className="text-muted-foreground hover:text-foreground p-1"
       >

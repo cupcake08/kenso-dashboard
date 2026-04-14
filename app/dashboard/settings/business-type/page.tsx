@@ -75,7 +75,7 @@ export default function BusinessTypeSettingsPage() {
     if (state) {
       setDescription(state.description ?? "");
     }
-  }, [state]);
+  }, [state?.description]);
 
   // Modal: auto-focus confirm button + Escape to close
   useEffect(() => {

@@ -24,7 +24,6 @@
     "tailwind-merge": "2.5.0"
   },
   "devDependencies": {
-    "@types/animejs": "^3.1.13",
     "@types/node": "latest",
     "@types/react": "19.0.0",
     "@types/react-dom": "19.0.0",

@@ -8,7 +8,7 @@ function metricsFor(result: AnalysisResultV2): Array<{ label: string; value: str
       { label: "orders", value: m.ordersDetected },
       { label: "upsell attach", value: `${Math.round(m.upsellAttachRate * 100)}%` },
       { label: "complaints", value: m.complaintCount },
-      { label: "avg sentiment", value: result.sentiment.average.toFixed(2) },
+      { label: "avg sentiment", value: result.sentiment?.average?.toFixed(2) ?? "–" },
     ];
   }
   if (result.vertical === "generic") {
@@ -16,15 +16,15 @@ function metricsFor(result: AnalysisResultV2): Array<{ label: string; value: str
     return [
       { label: "conversations", value: m.conversationCount },
       { label: "topics", value: m.topics.length },
-      { label: "minutes analyzed", value: result.minutesAnalyzed },
-      { label: "avg sentiment", value: result.sentiment.average.toFixed(2) },
+      { label: "minutes analyzed", value: result.minutesAnalyzed ?? 0 },
+      { label: "avg sentiment", value: result.sentiment?.average?.toFixed(2) ?? "–" },
     ];
   }
   return [
-    { label: "minutes analyzed", value: result.minutesAnalyzed },
+    { label: "minutes analyzed", value: result.minutesAnalyzed ?? 0 },
     { label: "findings", value: (result.findings ?? []).length },
     { label: "highlights", value: (result.highlights ?? []).length },
-    { label: "avg sentiment", value: result.sentiment.average.toFixed(2) },
+    { label: "avg sentiment", value: result.sentiment?.average?.toFixed(2) ?? "–" },
   ];
 }
 
@@ -43,7 +43,7 @@ export function AtAGlance({ result }: { result: AnalysisResultV2 }) {
       </div>
       <div className="text-xs text-muted-foreground mb-1">Sentiment over the shift</div>
       <div className="text-emerald-500">
-        <Sparkline values={result.sentiment.values} />
+        <Sparkline values={result.sentiment?.values ?? []} />
       </div>
     </section>
   );

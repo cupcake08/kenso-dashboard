@@ -1,11 +1,11 @@
 "use client";
-import useSWR from "swr";
+import { useApi } from "./use-api";
 import { getCompanyFeatures } from "@/lib/api";
 
 export function useCompanyFeatures() {
-  const { data, error, isLoading } = useSWR(
+  const { data, error, isLoading } = useApi(
     "company/features",
-    getCompanyFeatures,
+    () => getCompanyFeatures(),
     { dedupingInterval: 60_000 }
   );
   return { features: data ?? {}, error, isLoading };
