@@ -100,6 +100,7 @@ export default function OnboardingPage() {
   }
 
   function handleSkipDescription() {
+    if (loading) return;
     completeOnboarding();
   }
 

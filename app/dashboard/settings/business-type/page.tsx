@@ -1,8 +1,9 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2, AlertCircle, X } from "lucide-react";
 import { toast } from "sonner";
+import { useSWRConfig } from "swr";
 import { useBusinessType } from "@/hooks/use-business-type";
 import { patchBusinessType, patchCompanyDescription } from "@/lib/api";
 import { BusinessTypePicker } from "@/components/onboarding/business-type-picker";
@@ -58,10 +59,12 @@ function SourceLabel({
 
 export default function BusinessTypeSettingsPage() {
   const { state, isLoading, error, mutate } = useBusinessType();
+  const { mutate: globalMutate } = useSWRConfig();
 
   // Confirm modal state
   const [pendingPick, setPendingPick] = useState<Exclude<BusinessType, ""> | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const confirmButtonRef = useRef<HTMLButtonElement>(null);
 
   // Description state
   const [description, setDescription] = useState("");
@@ -73,6 +76,17 @@ export default function BusinessTypeSettingsPage() {
       setDescription(state.description ?? "");
     }
   }, [state]);
+
+  // Modal: auto-focus confirm button + Escape to close
+  useEffect(() => {
+    if (!pendingPick) return;
+    confirmButtonRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPendingPick(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [pendingPick]);
 
   const savedDescription = state?.description ?? "";
   const descUnchanged = description === savedDescription;
@@ -91,6 +105,9 @@ export default function BusinessTypeSettingsPage() {
     try {
       await patchBusinessType(pendingPick);
       await mutate();
+      // Backend's PATCH /business-type also deletes any pending suggestion doc;
+      // bust the banner's SWR cache so it disappears without a page reload.
+      await globalMutate("company/business-type-suggestion");
       toast.success("Business type updated");
       closeModal();
     } catch (e) {
@@ -220,14 +237,19 @@ export default function BusinessTypeSettingsPage() {
           >
             <motion.div
               key="confirm-panel"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="bt-confirm-heading"
+              aria-describedby="bt-confirm-body"
               initial={{ opacity: 0, scale: 0.95, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
               transition={{ duration: 0.2, ease: [0.33, 1, 0.68, 1] }}
               className="bg-background rounded-2xl border border-border p-6 max-w-sm w-full mx-4 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-start justify-between mb-3">
-                <h2 className="text-base font-semibold text-foreground leading-snug">
+                <h2 id="bt-confirm-heading" className="text-base font-semibold text-foreground leading-snug">
                   Change business type?
                 </h2>
                 <button
@@ -239,7 +261,7 @@ export default function BusinessTypeSettingsPage() {
                   <X className="h-4 w-4" />
                 </button>
               </div>
-              <p className="text-sm text-muted-foreground leading-relaxed mb-6">
+              <p id="bt-confirm-body" className="text-sm text-muted-foreground leading-relaxed mb-6">
                 Changing this will affect future analyses. Past results keep their original vertical.
               </p>
               <div className="flex gap-3">
@@ -252,6 +274,7 @@ export default function BusinessTypeSettingsPage() {
                   Cancel
                 </Button>
                 <Button
+                  ref={confirmButtonRef}
                   className="flex-1"
                   onClick={confirmChange}
                   disabled={confirming}
