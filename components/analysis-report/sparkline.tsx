@@ -18,11 +18,12 @@ export function Sparkline({ values, height = 40, className = "" }: Props) {
     const len = pathRef.current.getTotalLength();
     pathRef.current.style.strokeDasharray = `${len}`;
     pathRef.current.style.strokeDashoffset = `${len}`;
-    animate(pathRef.current, {
+    const anim = animate(pathRef.current, {
       strokeDashoffset: 0,
       duration: 800,
-      easing: "easeOutQuad",
+      ease: "outQuad",
     });
+    return () => { anim.pause(); };
   }, [values]);
 
   if (values.length === 0) {
