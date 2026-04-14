@@ -633,11 +633,17 @@ export const RecordingsPlayer = memo(function RecordingsPlayer({ deviceId }: { d
 
   const useGrouped = segments.length > 12;
 
-  // Date navigation (today + 2 previous days — matches 2-day retention)
-  const today = useMemo(() => {
-    const d = new Date();
-    return d.toISOString().split("T")[0];
-  }, []);
+  // Date navigation (today + 2 previous days — matches 2-day retention).
+  // Use LOCAL date, not UTC. At 2 AM IST, toISOString() returns yesterday's
+  // date because it converts to UTC — that causes the recordings view to
+  // show the wrong day's audio.
+  const formatLocalDate = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  };
+  const today = useMemo(() => formatLocalDate(new Date()), []);
   const [selectedDate, setSelectedDate] = useState(today);
 
   const dates = useMemo(() => {
@@ -645,7 +651,7 @@ export const RecordingsPlayer = memo(function RecordingsPlayer({ deviceId }: { d
     for (let i = 0; i < 3; i++) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      result.push(d.toISOString().split("T")[0]);
+      result.push(formatLocalDate(d));
     }
     return result;
   }, []);
