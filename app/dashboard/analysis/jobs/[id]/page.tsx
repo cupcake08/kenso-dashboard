@@ -9,6 +9,7 @@ import { BadgeVariant } from "@/components/ui/badge-variant";
 import { Button } from "@/components/ui/button";
 import { ReportShell } from "@/components/analysis-report/report-shell";
 import { LegacyReport } from "@/components/analysis-report/legacy/legacy-report";
+import { RecordingsPlayer } from "@/components/dashboard/recordings-player";
 
 const IS_DEMO = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
@@ -128,6 +129,7 @@ export default function JobDetailPage() {
   const [error, setError] = useState("");
   const [cancelling, setCancelling] = useState(false);
   const [cancelSecondsLeft, setCancelSecondsLeft] = useState(0);
+  const [selectedMicId, setSelectedMicId] = useState<string>("");
 
   // Cancel countdown timer (60s window)
   useEffect(() => {
@@ -212,6 +214,13 @@ export default function JobDetailPage() {
     interval = setInterval(load, 10000);
     return () => { if (interval) clearInterval(interval); };
   }, [id]);
+
+  // Initialize selectedMicId when job loads
+  useEffect(() => {
+    if (job && job.micIds.length > 0 && !selectedMicId) {
+      setSelectedMicId(job.micIds[0]);
+    }
+  }, [job, selectedMicId]);
 
   async function handleCancel() {
     if (!job || cancelSecondsLeft <= 0) return;
@@ -328,6 +337,30 @@ export default function JobDetailPage() {
         isV2(result)
           ? <ReportShell result={result} />
           : <LegacyReport result={result} />
+      )}
+
+      {/* Recordings player — allows playback of segments referenced in the report */}
+      {selectedMicId && (
+        <div id="recordings-player">
+          {job.micIds.length > 1 && (
+            <div className="flex gap-2 mb-3">
+              {job.micIds.map((micId) => (
+                <button
+                  key={micId}
+                  onClick={() => setSelectedMicId(micId)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                    selectedMicId === micId
+                      ? "bg-primary/10 text-primary border border-primary/20"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted/30 border border-transparent"
+                  }`}
+                >
+                  {micId}
+                </button>
+              ))}
+            </div>
+          )}
+          <RecordingsPlayer deviceId={selectedMicId} />
+        </div>
       )}
 
       {!result && !isInProgress && (
