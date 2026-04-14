@@ -237,3 +237,102 @@ export interface OperatingSchedule {
   created_at: string;
   updated_at: string;
 }
+
+// --- Analysis V2 types (discriminated union + vertical metrics) ---
+
+import type { BusinessType } from "./company";
+
+export type Reference = {
+  absoluteTime: string;
+  segmentId: string;
+  offsetMs: number;
+  durationMs: number;
+  spanText: string;
+  context?: string;
+};
+
+export type SentimentCurve = {
+  bucketSeconds: number; // always 300
+  values: number[];
+  average: number;
+};
+
+// Type aliases for the base finding/highlight shapes — keeps the discriminated
+// union base compatible with the existing AnalysisFinding / AnalysisHighlight
+// interfaces consumed by the job detail page.
+type Finding = AnalysisFinding & { evidenceRef?: Reference };
+type Highlight = AnalysisHighlight & { reference?: Reference };
+
+export type Period = {
+  startUnix: number;
+  endUnix: number;
+  businessDay: string;
+  label: string;
+};
+
+export type ClassificationHint = {
+  vertical: Exclude<BusinessType, "">;
+  confidence: number;
+  reason: string;
+};
+
+export type RestaurantMetrics = {
+  ordersConfidence: number;
+  ordersDetected: number;
+  upsellAttempts: number;
+  upsellSuccesses: number;
+  upsellAttachRate: number;
+  avgWaitTimeSec: number;
+  peakWaitTimeSec: number;
+  complaintCount: number;
+  paymentEventsByMethod: Record<string, number>;
+  topUpsellMoments: Array<{
+    staffPhrase: string;
+    itemAttached: string;
+    converted: boolean;
+    reference: Reference;
+  }>;
+  complaintClusters: Array<{
+    theme: string;
+    count: number;
+    severity: string;
+    resolved: number;
+    firstExample: Reference;
+  }>;
+};
+
+export type GenericMetrics = {
+  conversationCount: number;
+  avgConversationSec: number;
+  topics: string[];
+  classificationHint?: ClassificationHint;
+};
+
+// Shared base fields present on every vertical's result.
+type AnalysisResultV2Base = {
+  companyId: string;
+  shopId: string;
+  period: Period;
+  minutesAnalyzed: number;
+  promptVersion: string;
+  leadTheme: string;
+  sectionOrder: string[];
+  heroQuote?: Reference;
+  summary: string;
+  sentiment: SentimentCurve;
+  findings: Finding[];
+  highlights: Highlight[];
+  recommendations: string[];
+  speakerBreakdown?: Record<string, number>;
+
+  // Legacy — populated only on pre-migration docs. Kept for fallback renderer.
+  transcript?: unknown[];
+};
+
+// Discriminated union AnalysisResult (v2).
+// The existing AnalysisResult interface is kept below for backward compat;
+// AnalysisResultV2 is the new canonical type for analytics pages.
+export type AnalysisResultV2 =
+  | (AnalysisResultV2Base & { vertical: "restaurant"; restaurantMetrics: RestaurantMetrics })
+  | (AnalysisResultV2Base & { vertical: "generic"; genericMetrics: GenericMetrics })
+  | (AnalysisResultV2Base & { vertical: "" /* legacy fallback — no vertical-specific metrics */ });
