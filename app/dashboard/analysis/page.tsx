@@ -3,9 +3,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { BarChart3, Shield, Users, TrendingUp, Plus, Loader2, ChevronRight, Gift, CalendarClock, Lock } from "lucide-react";
-import { listTemplates, listJobs, apiFetch, normalizeCredits } from "@/lib/api";
-import type { AnalysisTemplate, AnalysisJob } from "@/types/analysis";
+import { BarChart3, Plus, Loader2, ChevronRight, Gift, CalendarClock, Lock } from "lucide-react";
+import { listJobs, apiFetch, normalizeCredits } from "@/lib/api";
+import type { AnalysisJob } from "@/types/analysis";
 import type { RawCreditsResponse } from "@/types/api";
 import { useApi } from "@/hooks/use-api";
 import { useSubscription } from "@/hooks/use-subscription";
@@ -17,12 +17,6 @@ import { toast } from "sonner";
 
 const IS_DEMO = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
-const DEMO_TEMPLATES: AnalysisTemplate[] = [
-  { templateId: "tmpl_staff", name: "Staff Performance Review", category: "staff_performance", description: "Evaluate staff interactions, response times, and customer handling quality across shifts.", complexityMultiplier: 1.2, isBuiltin: true, companyId: "demo", icon: "" },
-  { templateId: "tmpl_customer", name: "Customer Sentiment Analysis", category: "customer_interaction", description: "Analyze customer mood, complaints, and satisfaction signals from audio conversations.", complexityMultiplier: 1.0, isBuiltin: true, companyId: "demo", icon: "" },
-  { templateId: "tmpl_compliance", name: "Compliance & Policy Audit", category: "compliance_policy", description: "Check for policy violations, inappropriate language, and regulatory compliance.", complexityMultiplier: 1.5, isBuiltin: true, companyId: "demo", icon: "" },
-  { templateId: "tmpl_sales", name: "Sales Performance Tracker", category: "sales_revenue", description: "Track upselling attempts, payment confirmations, and revenue-related conversations.", complexityMultiplier: 1.0, isBuiltin: true, companyId: "demo", icon: "" },
-];
 
 const DEMO_JOBS: AnalysisJob[] = [
   {
@@ -42,12 +36,6 @@ const DEMO_JOBS: AnalysisJob[] = [
   },
 ];
 
-const CATEGORY_ICONS: Record<string, React.ElementType> = {
-  staff_performance: Users,
-  customer_interaction: BarChart3,
-  sales_revenue: TrendingUp,
-  compliance_policy: Shield,
-};
 
 const STATUS_COLORS: Record<string, string> = {
   completed: "emerald", failed: "red", processing: "blue", deducted: "blue",
@@ -63,11 +51,6 @@ function formatTimeRange(start: string, end: string): string {
   return `${s.toLocaleDateString("en-IN", { day: "numeric", month: "short" })} ${s.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })} \u2013 ${e.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}`;
 }
 
-function costLabel(multiplier: number): string {
-  if (multiplier <= 1) return "Standard";
-  if (multiplier <= 1.3) return "Standard+";
-  return "Premium";
-}
 
 export default function AnalysisPage() {
   const router = useRouter();
@@ -76,15 +59,7 @@ export default function AnalysisPage() {
 
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
-  const [modalTemplate, setModalTemplate] = useState<AnalysisTemplate | null>(null);
   const [modalStep, setModalStep] = useState(0);
-
-  // SWR: templates
-  const { data: templates = [], isLoading: templatesLoading, error: templatesError, mutate: mutateAll } = useApi<AnalysisTemplate[]>(
-    IS_DEMO ? null : "/_analysis_all",
-    async () => listTemplates(),
-    { fallbackData: IS_DEMO ? DEMO_TEMPLATES : undefined },
-  );
 
   // SWR: jobs
   const { data: jobs = [], mutate: mutateJobs } = useApi<AnalysisJob[]>(
@@ -103,12 +78,9 @@ export default function AnalysisPage() {
   const credits = creditsData?.balance ?? 0;
   const subState = creditsData?.subscriptionState ?? "";
   const trialEndsAt = creditsData?.trialEndsAt ?? "";
-  const loading = templatesLoading || subLoading;
-  const error = templatesError?.message ?? "";
+  const loading = subLoading;
 
-  function openModal(template?: AnalysisTemplate) {
-    setModalTemplate(template ?? null);
-    // Modal no longer has a Template step; always open at the first step (Devices).
+  function openModal() {
     setModalStep(0);
     setModalOpen(true);
   }
@@ -162,16 +134,6 @@ export default function AnalysisPage() {
         )}
       </div>
 
-      {/* Error banner */}
-      {error && (
-        <div className="rounded-xl border border-red-400/20 bg-red-400/5 px-5 py-3 flex items-center justify-between" role="alert">
-          <p className="text-sm text-red-400">Unable to load analysis data</p>
-          <Button variant="ghost" size="sm" onClick={() => mutateAll()} className="text-red-400 hover:text-red-300 hover:bg-red-400/10">
-            Retry
-          </Button>
-        </div>
-      )}
-
       {/* Trial banner */}
       {subState === "trialing" && (
         <div className="flex items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 px-5 py-3">
@@ -204,37 +166,6 @@ export default function AnalysisPage() {
         </div>
       )}
 
-      {/* Template Grid */}
-      {(hasAnalysis !== false || IS_DEMO) && (
-        <div>
-          <h2 className="text-xs font-medium uppercase tracking-widest text-muted-foreground mb-4">Templates</h2>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {templates.map((t) => {
-              const Icon = CATEGORY_ICONS[t.category] ?? BarChart3;
-              return (
-                <button
-                  key={t.templateId}
-                  onClick={() => openModal(t)}
-                  className="rounded-xl border border-border bg-card/50 p-5 text-left hover:border-primary/40 hover:bg-primary/5 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                >
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
-                      <Icon className="h-4.5 w-4.5 text-primary" />
-                    </div>
-                    {t.isBuiltin && (
-                      <BadgeVariant variant="blue" className="text-xs">Built-in</BadgeVariant>
-                    )}
-                  </div>
-                  <p className="font-medium text-foreground text-sm mb-1">{t.name}</p>
-                  <p className="text-xs text-muted-foreground line-clamp-2">{t.description}</p>
-                  <p className="mt-3 text-xs text-muted-foreground">{costLabel(t.complexityMultiplier)}</p>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
       {/* Recent Jobs */}
       {(hasAnalysis !== false || IS_DEMO) && (
         <div>
@@ -243,7 +174,7 @@ export default function AnalysisPage() {
             <div className="rounded-xl border border-border bg-card/30 p-10 text-center">
               <BarChart3 className="h-7 w-7 text-muted-foreground/30 mx-auto mb-3" />
               <p className="text-sm font-medium text-foreground/70">No analysis jobs yet</p>
-              <p className="text-xs text-muted-foreground/50 mt-1">Select a template above to get started</p>
+              <p className="text-xs text-muted-foreground/50 mt-1">Click "New Analysis" above to run your first analysis</p>
             </div>
           ) : (
             <>
