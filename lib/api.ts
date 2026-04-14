@@ -6,8 +6,10 @@ import type {
 } from "@/types/api";
 import type {
   RawAnalysisTemplate, RawAnalysisJob, RawEstimateResponse, RawAnalysisSchedule,
+  RawReference, RawRestaurantMetrics, RawGenericMetrics,
   AnalysisTemplate, AnalysisJob, EstimateResult, AnalysisSchedule,
   OperatingSchedule, DaySchedule, DeviceOverride,
+  Reference, RestaurantMetrics, GenericMetrics,
 } from "@/types/analysis";
 import type {
   BusinessType, BusinessTypeState, BusinessTypeSuggestion, CompanyFeatures,
@@ -201,6 +203,59 @@ export function normalizeTemplate(raw: RawAnalysisTemplate): AnalysisTemplate {
   };
 }
 
+function normalizeReference(raw: RawReference): Reference {
+  return {
+    absoluteTime: raw.absolute_time,
+    segmentId: raw.segment_id,
+    offsetMs: raw.offset_ms,
+    durationMs: raw.duration_ms,
+    spanText: raw.span_text,
+    ...(raw.context != null && { context: raw.context }),
+  };
+}
+
+function normalizeRestaurantMetrics(raw: RawRestaurantMetrics): RestaurantMetrics {
+  return {
+    ordersConfidence: raw.orders_confidence,
+    ordersDetected: raw.orders_detected,
+    upsellAttempts: raw.upsell_attempts,
+    upsellSuccesses: raw.upsell_successes,
+    upsellAttachRate: raw.upsell_attach_rate,
+    avgWaitTimeSec: raw.avg_wait_time_sec,
+    peakWaitTimeSec: raw.peak_wait_time_sec,
+    complaintCount: raw.complaint_count,
+    paymentEventsByMethod: raw.payment_events_by_method,
+    topUpsellMoments: raw.top_upsell_moments.map((m) => ({
+      staffPhrase: m.staff_phrase,
+      itemAttached: m.item_attached,
+      converted: m.converted,
+      reference: normalizeReference(m.reference),
+    })),
+    complaintClusters: raw.complaint_clusters.map((c) => ({
+      theme: c.theme,
+      count: c.count,
+      severity: c.severity,
+      resolved: c.resolved,
+      firstExample: normalizeReference(c.first_example),
+    })),
+  };
+}
+
+function normalizeGenericMetrics(raw: RawGenericMetrics): GenericMetrics {
+  return {
+    conversationCount: raw.conversation_count,
+    avgConversationSec: raw.avg_conversation_sec,
+    topics: raw.topics,
+    ...(raw.classification_hint && {
+      classificationHint: {
+        vertical: raw.classification_hint.vertical as GenericMetrics["classificationHint"] extends { vertical: infer V } ? V : never,
+        confidence: raw.classification_hint.confidence,
+        reason: raw.classification_hint.reason,
+      },
+    }),
+  };
+}
+
 export function normalizeJob(raw: RawAnalysisJob): AnalysisJob {
   return {
     jobId: raw.job_id,
@@ -220,6 +275,7 @@ export function normalizeJob(raw: RawAnalysisJob): AnalysisJob {
     failureReason: raw.failure_reason,
     result: raw.result
       ? {
+          // Legacy fields
           summary: raw.result.summary,
           transcript: (raw.result.transcript ?? []).map((u) => ({
             absoluteTime: u.absolute_time,
@@ -238,6 +294,7 @@ export function normalizeJob(raw: RawAnalysisJob): AnalysisJob {
             title: f.title,
             description: f.description,
             evidence: f.evidence,
+            ...(f.evidence_ref && { evidenceRef: normalizeReference(f.evidence_ref) }),
           })),
           highlights: (raw.result.highlights ?? []).map((h) => ({
             absoluteTime: h.absolute_time,
@@ -245,10 +302,48 @@ export function normalizeJob(raw: RawAnalysisJob): AnalysisJob {
             offsetMs: h.offset_ms,
             type: h.type,
             description: h.description,
+            ...(h.reference && { reference: normalizeReference(h.reference) }),
           })),
           recommendations: raw.result.recommendations ?? [],
           metrics: raw.result.metrics,
           speakerBreakdown: raw.result.speaker_breakdown,
+
+          // V2 identity
+          ...(raw.result.vertical != null && { vertical: raw.result.vertical as "restaurant" | "generic" | "" }),
+          ...(raw.result.company_id && { companyId: raw.result.company_id }),
+          ...(raw.result.shop_id && { shopId: raw.result.shop_id }),
+          ...(raw.result.period && {
+            period: {
+              startUnix: raw.result.period.start_unix,
+              endUnix: raw.result.period.end_unix,
+              businessDay: raw.result.period.business_day,
+              label: raw.result.period.label,
+            },
+          }),
+          ...(raw.result.minutes_analyzed != null && { minutesAnalyzed: raw.result.minutes_analyzed }),
+          ...(raw.result.prompt_version && { promptVersion: raw.result.prompt_version }),
+
+          // V2 editorial
+          ...(raw.result.lead_theme && { leadTheme: raw.result.lead_theme }),
+          ...(raw.result.section_order && { sectionOrder: raw.result.section_order }),
+          ...(raw.result.hero_quote && { heroQuote: normalizeReference(raw.result.hero_quote) }),
+
+          // V2 sentiment
+          ...(raw.result.sentiment && {
+            sentiment: {
+              bucketSeconds: raw.result.sentiment.bucket_seconds,
+              values: raw.result.sentiment.values,
+              average: raw.result.sentiment.average,
+            },
+          }),
+
+          // V2 vertical extensions
+          ...(raw.result.restaurant_metrics && {
+            restaurantMetrics: normalizeRestaurantMetrics(raw.result.restaurant_metrics),
+          }),
+          ...(raw.result.generic_metrics && {
+            genericMetrics: normalizeGenericMetrics(raw.result.generic_metrics),
+          }),
         }
       : undefined,
     createdAt: unixToISO(raw.created_at_unix),

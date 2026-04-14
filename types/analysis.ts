@@ -32,7 +32,55 @@ export interface RawAnalysisJob {
   completed_at_unix?: number;
 }
 
+// Raw V2 wire-format types (snake_case matching Go JSON tags).
+
+export interface RawReference {
+  absolute_time: string;
+  segment_id: string;
+  offset_ms: number;
+  duration_ms: number;
+  span_text: string;
+  context?: string;
+}
+
+export interface RawRestaurantMetrics {
+  orders_confidence: number;
+  orders_detected: number;
+  upsell_attempts: number;
+  upsell_successes: number;
+  upsell_attach_rate: number;
+  avg_wait_time_sec: number;
+  peak_wait_time_sec: number;
+  complaint_count: number;
+  payment_events_by_method: Record<string, number>;
+  top_upsell_moments: Array<{
+    staff_phrase: string;
+    item_attached: string;
+    converted: boolean;
+    reference: RawReference;
+  }>;
+  complaint_clusters: Array<{
+    theme: string;
+    count: number;
+    severity: string;
+    resolved: number;
+    first_example: RawReference;
+  }>;
+}
+
+export interface RawGenericMetrics {
+  conversation_count: number;
+  avg_conversation_sec: number;
+  topics: string[];
+  classification_hint?: {
+    vertical: string;
+    confidence: number;
+    reason: string;
+  };
+}
+
 export interface RawAnalysisResult {
+  // Legacy fields
   summary: string;
   transcript: RawAnalysisUtterance[];
   findings: RawAnalysisFinding[];
@@ -40,6 +88,35 @@ export interface RawAnalysisResult {
   recommendations: string[];
   metrics?: Record<string, unknown>;
   speaker_breakdown?: Record<string, number>;
+
+  // V2 identity
+  vertical?: string;
+  company_id?: string;
+  shop_id?: string;
+  period?: {
+    start_unix: number;
+    end_unix: number;
+    business_day: string;
+    label: string;
+  };
+  minutes_analyzed?: number;
+  prompt_version?: string;
+
+  // V2 editorial
+  lead_theme?: string;
+  section_order?: string[];
+  hero_quote?: RawReference;
+
+  // V2 sentiment
+  sentiment?: {
+    bucket_seconds: number;
+    values: number[];
+    average: number;
+  };
+
+  // V2 vertical extensions
+  restaurant_metrics?: RawRestaurantMetrics;
+  generic_metrics?: RawGenericMetrics;
 }
 
 export interface RawAnalysisUtterance {
@@ -60,6 +137,7 @@ export interface RawAnalysisFinding {
   title: string;
   description: string;
   evidence?: string;
+  evidence_ref?: RawReference;
 }
 
 export interface RawAnalysisHighlight {
@@ -68,6 +146,7 @@ export interface RawAnalysisHighlight {
   offset_ms: number;
   type: string;
   description: string;
+  reference?: RawReference;
 }
 
 export interface RawEstimateResponse {
@@ -167,6 +246,7 @@ export interface AnalysisFinding {
   title: string;
   description: string;
   evidence?: string;
+  evidenceRef?: Reference;
 }
 
 export interface AnalysisHighlight {
@@ -175,6 +255,7 @@ export interface AnalysisHighlight {
   offsetMs: number;
   type: string;
   description: string;
+  reference?: Reference;
 }
 
 export interface AnalysisSchedule {
