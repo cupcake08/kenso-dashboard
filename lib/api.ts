@@ -386,7 +386,7 @@ export async function listTemplates(): Promise<AnalysisTemplate[]> {
 }
 
 export async function createJob(body: {
-  template_id: string;
+  template_id?: string;
   mic_ids: string[];
   shop_ids: string[];
   time_range_start_unix: number;
@@ -415,7 +415,7 @@ export async function cancelJob(jobId: string): Promise<void> {
 }
 
 export async function estimateCredits(body: {
-  template_id: string;
+  template_id?: string;
   mic_ids: string[];
   shop_ids: string[];
   time_range_start_unix: number;

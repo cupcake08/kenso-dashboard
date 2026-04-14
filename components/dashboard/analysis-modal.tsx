@@ -3,21 +3,14 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { BarChart3, Shield, Users, TrendingUp, Zap, Loader2, CheckCircle2, X, Check, Cpu } from "lucide-react";
+import { Zap, Loader2, CheckCircle2, X, Check, Cpu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { apiFetch, estimateCredits, createJob, normalizeDevice } from "@/lib/api";
-import type { AnalysisTemplate, AnalysisJob, EstimateResult } from "@/types/analysis";
+import type { AnalysisJob, EstimateResult } from "@/types/analysis";
 import type { Device, RawDevice } from "@/types/api";
 
-const CATEGORY_ICONS: Record<string, React.ElementType> = {
-  staff_performance: Users,
-  customer_interaction: BarChart3,
-  sales_revenue: TrendingUp,
-  compliance_policy: Shield,
-};
-
-const STEPS = ["Template", "Devices", "Time Range", "Notes", "Confirm"] as const;
+const STEPS = ["Devices", "Time Range", "Notes", "Confirm"] as const;
 
 /* ── Time presets ── */
 
@@ -244,16 +237,13 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onJobCreated: (job: AnalysisJob) => void;
-  templates: AnalysisTemplate[];
-  initialTemplate?: AnalysisTemplate | null;
   initialStep?: number;
   /** Current credit balance in minutes (used to show insufficient-credits warning) */
   balance?: number;
 }
 
-export function AnalysisModal({ open, onClose, onJobCreated, templates, initialTemplate, initialStep, balance }: Props) {
+export function AnalysisModal({ open, onClose, onJobCreated, initialStep, balance }: Props) {
   const [step, setStep] = useState(initialStep ?? 0);
-  const [selectedTemplate, setSelectedTemplate] = useState<AnalysisTemplate | null>(initialTemplate ?? null);
   const [selectedMics, setSelectedMics] = useState<string[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
   const [devicesLoading, setDevicesLoading] = useState(false);
@@ -271,8 +261,7 @@ export function AnalysisModal({ open, onClose, onJobCreated, templates, initialT
   // Reset on open + fetch devices
   useEffect(() => {
     if (open) {
-      setStep(initialStep ?? (initialTemplate ? 1 : 0));
-      setSelectedTemplate(initialTemplate ?? null);
+      setStep(initialStep ?? 0);
       setSelectedMics([]);
       setRangeStart("");
       setRangeEnd("");
@@ -298,7 +287,7 @@ export function AnalysisModal({ open, onClose, onJobCreated, templates, initialT
         }
       }
     }
-  }, [open, initialTemplate, initialStep, devices.length]);
+  }, [open, initialStep, devices.length]);
 
   // Focus trap + ESC
   useEffect(() => {
@@ -330,7 +319,7 @@ export function AnalysisModal({ open, onClose, onJobCreated, templates, initialT
   }, [open, step, onClose]);
 
   const runEstimate = useCallback(async () => {
-    if (!selectedTemplate || selectedMics.length === 0 || !rangeStart || !rangeEnd) return;
+    if (selectedMics.length === 0 || !rangeStart || !rangeEnd) return;
     setEstimating(true);
     setSubmitError("");
     try {
@@ -347,35 +336,34 @@ export function AnalysisModal({ open, onClose, onJobCreated, templates, initialT
           estimatedHours,
           estimatedCostInr,
         });
-        setStep(4);
+        setStep(3);
         return;
       }
       const est = await estimateCredits({
-        template_id: selectedTemplate.templateId,
         mic_ids: selectedMics,
         shop_ids: [],
         time_range_start_unix: Math.floor(new Date(rangeStart).getTime() / 1000),
         time_range_end_unix: Math.floor(new Date(rangeEnd).getTime() / 1000),
       });
       setEstimate(est);
-      setStep(4);
+      setStep(3);
     } catch (e) {
       setSubmitError(e instanceof Error ? e.message : "Estimate failed");
     } finally {
       setEstimating(false);
     }
-  }, [selectedTemplate, selectedMics, rangeStart, rangeEnd]);
+  }, [selectedMics, rangeStart, rangeEnd]);
 
   const submitJob = useCallback(async () => {
-    if (!selectedTemplate || selectedMics.length === 0 || !rangeStart || !rangeEnd) return;
+    if (selectedMics.length === 0 || !rangeStart || !rangeEnd) return;
     setSubmitting(true);
     setSubmitError("");
     try {
       if (process.env.NEXT_PUBLIC_DEMO_MODE === "true") {
         await new Promise((r) => setTimeout(r, 800));
         const demoJob: AnalysisJob = {
-          jobId: `job_demo_${Date.now()}`, companyId: "demo", templateId: selectedTemplate.templateId,
-          templateName: selectedTemplate.name, micIds: selectedMics,
+          jobId: `job_demo_${Date.now()}`, companyId: "demo", templateId: "customer_interaction",
+          templateName: "Customer Interaction Quality", micIds: selectedMics,
           timeRangeStart: new Date(rangeStart).toISOString(), timeRangeEnd: new Date(rangeEnd).toISOString(),
           status: "processing", executionTier: "flex", estimatedCredits: estimate?.estimatedCredits ?? 100,
           actualCredits: 0, chunkCount: 4, chunksCompleted: 0, cached: false, createdAt: new Date().toISOString(),
@@ -385,7 +373,6 @@ export function AnalysisModal({ open, onClose, onJobCreated, templates, initialT
         return;
       }
       const job = await createJob({
-        template_id: selectedTemplate.templateId,
         mic_ids: selectedMics,
         shop_ids: [],
         time_range_start_unix: Math.floor(new Date(rangeStart).getTime() / 1000),
@@ -404,13 +391,7 @@ export function AnalysisModal({ open, onClose, onJobCreated, templates, initialT
     } finally {
       setSubmitting(false);
     }
-  }, [selectedTemplate, selectedMics, rangeStart, rangeEnd, notes, estimate, onJobCreated, onClose]);
-
-  function costLabel(multiplier: number): string {
-    if (multiplier <= 1) return "Standard";
-    if (multiplier <= 1.3) return "Standard+";
-    return "Premium";
-  }
+  }, [selectedMics, rangeStart, rangeEnd, notes, estimate, onJobCreated, onClose]);
 
   return (
     <AnimatePresence>
@@ -464,38 +445,9 @@ export function AnalysisModal({ open, onClose, onJobCreated, templates, initialT
               ))}
             </div>
 
-            {/* Step 0: Template selection */}
+            {/* Step 0: Device selection */}
             {step === 0 && (
-              <div className="space-y-2">
-                {templates.map((t) => {
-                  const Icon = CATEGORY_ICONS[t.category] ?? BarChart3;
-                  return (
-                    <button
-                      key={t.templateId}
-                      onClick={() => { setSelectedTemplate(t); setStep(1); }}
-                      className="w-full flex items-center gap-3 p-3.5 rounded-xl border border-border hover:border-primary/40 hover:bg-primary/5 transition-all text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 shrink-0">
-                        <Icon className="h-4.5 w-4.5 text-primary" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium text-sm text-foreground">{t.name}</p>
-                        <p className="text-xs text-muted-foreground line-clamp-1">{t.description}</p>
-                      </div>
-                      <span className="text-xs text-muted-foreground shrink-0">{costLabel(t.complexityMultiplier)}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Step 1: Device selection */}
-            {step === 1 && selectedTemplate && (
               <div>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Using <span className="text-foreground font-medium">{selectedTemplate.name}</span>
-                </p>
-
                 {devicesLoading ? (
                   <div className="flex items-center justify-center h-32">
                     <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -578,27 +530,27 @@ export function AnalysisModal({ open, onClose, onJobCreated, templates, initialT
                 )}
 
                 <div className="flex gap-2 mt-4">
-                  <Button variant="outline" className="flex-1" onClick={() => setStep(0)}>Back</Button>
-                  <Button className="flex-1" onClick={() => setStep(2)} disabled={selectedMics.length === 0}>
+                  <Button variant="outline" className="flex-1" disabled>Back</Button>
+                  <Button className="flex-1" onClick={() => setStep(1)} disabled={selectedMics.length === 0}>
                     Next ({selectedMics.length} selected)
                   </Button>
                 </div>
               </div>
             )}
 
-            {/* Step 2: Time range — presets + custom */}
-            {step === 2 && (
+            {/* Step 1: Time range — presets + custom */}
+            {step === 1 && (
               <TimeRangeStep
                 rangeStart={rangeStart}
                 rangeEnd={rangeEnd}
                 onRangeChange={(start, end) => { setRangeStart(start); setRangeEnd(end); }}
-                onBack={() => setStep(1)}
-                onNext={() => setStep(3)}
+                onBack={() => setStep(0)}
+                onNext={() => setStep(2)}
               />
             )}
 
-            {/* Step 3: Notes */}
-            {step === 3 && (
+            {/* Step 2: Notes */}
+            {step === 2 && (
               <div>
                 <label htmlFor="analysis-notes" className="text-xs font-medium text-muted-foreground mb-1.5 block">
                   Focus notes (optional)
@@ -611,7 +563,7 @@ export function AnalysisModal({ open, onClose, onJobCreated, templates, initialT
                   onChange={(e) => setNotes(e.target.value)}
                 />
                 <div className="flex gap-2 mt-4">
-                  <Button variant="outline" className="flex-1" onClick={() => setStep(2)}>Back</Button>
+                  <Button variant="outline" className="flex-1" onClick={() => setStep(1)}>Back</Button>
                   <Button className="flex-1" onClick={runEstimate} disabled={estimating}>
                     {estimating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Zap className="h-4 w-4 mr-2" />}
                     Estimate Cost
@@ -620,8 +572,8 @@ export function AnalysisModal({ open, onClose, onJobCreated, templates, initialT
               </div>
             )}
 
-            {/* Step 4: Confirm */}
-            {step === 4 && estimate && (
+            {/* Step 3: Confirm */}
+            {step === 3 && estimate && (
               <div>
                 {!estimate.hasAudio ? (
                   <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 mb-4">
@@ -629,10 +581,6 @@ export function AnalysisModal({ open, onClose, onJobCreated, templates, initialT
                   </div>
                 ) : (
                   <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-3 mb-4">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Template</span>
-                      <span className="text-foreground font-medium">{selectedTemplate?.name}</span>
-                    </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Audio</span>
                       <span className="text-foreground tabular-nums">{estimate.estimatedDurationMin.toFixed(0)} min</span>
@@ -665,7 +613,7 @@ export function AnalysisModal({ open, onClose, onJobCreated, templates, initialT
                   <p className="text-sm text-red-400 mb-3" role="alert">{submitError}</p>
                 )}
                 <div className="flex gap-2">
-                  <Button variant="outline" className="flex-1" onClick={() => setStep(3)}>Back</Button>
+                  <Button variant="outline" className="flex-1" onClick={() => setStep(2)}>Back</Button>
                   <Button
                     className="flex-1"
                     onClick={submitJob}

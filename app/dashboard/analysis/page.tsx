@@ -334,8 +334,6 @@ export default function AnalysisPage() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         onJobCreated={handleJobCreated}
-        templates={templates}
-        initialTemplate={modalTemplate}
         initialStep={modalStep}
         balance={credits}
       />
