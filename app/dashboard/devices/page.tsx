@@ -5,6 +5,7 @@ import type { Device, RawDevice } from "@/types/api";
 import { useApi } from "@/hooks/use-api";
 import { DeviceCard } from "@/components/dashboard/device-card";
 import { DeviceCardSkeleton } from "@/components/ui/skeleton";
+import { BusinessTypeSuggestBanner } from "@/components/dashboard/business-type-suggest-banner";
 import { Radio } from "lucide-react";
 import { toast } from "sonner";
 
@@ -108,6 +109,7 @@ export default function DevicesPage() {
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-foreground">Devices</h1>
         </div>
+        <BusinessTypeSuggestBanner />
         <div className="flex flex-col items-center justify-center min-h-[40vh] gap-6">
           <div className="relative rounded-2xl border border-dashed border-border p-10 flex flex-col items-center gap-4 max-w-md text-center">
             <div className="absolute -top-px left-1/2 -translate-x-1/2 h-px w-24 bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
@@ -135,6 +137,8 @@ export default function DevicesPage() {
           </p>
         </div>
       </div>
+
+      <BusinessTypeSuggestBanner />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {devices.map((device) => (
