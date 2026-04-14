@@ -599,6 +599,40 @@ function SegmentPanel({ segments, hourBuckets, useGrouped, totalDuration, curren
 export const RecordingsPlayer = memo(function RecordingsPlayer({ deviceId }: { deviceId: string }) {
   const { segments, state, toggle, seekTo, skip, cycleSpeed, loadDate, play } = useRecordingsPlayer(deviceId);
 
+  // Listen for kenso:play-segment events dispatched by ReferencePlayerBtn.
+  // Finds the matching segment by segmentId, seeks to its cumulative audio
+  // offset + the in-segment offsetMs. If playing, playback jumps immediately;
+  // if paused, position is updated so next play starts from the right point.
+  useEffect(() => {
+    function onPlaySegment(e: Event) {
+      const ce = e as CustomEvent<{ segmentId: string; offsetMs: number; durationMs: number }>;
+      const ref = ce.detail;
+      if (!ref) return;
+
+      const idx = segments.findIndex((s) => s.segment_id === ref.segmentId);
+      if (idx === -1) {
+        console.warn("[RecordingsPlayer] kenso:play-segment: segment not found:", ref.segmentId);
+        return;
+      }
+
+      // Compute cumulative audio offset for this segment
+      let cumulativeOffset = 0;
+      for (let i = 0; i < idx; i++) {
+        cumulativeOffset += segments[i].duration_ms / 1000;
+      }
+      const targetSeconds = cumulativeOffset + ref.offsetMs / 1000;
+      seekTo(targetSeconds);
+
+      // If paused, also start playback from that position
+      if (!state.playing) {
+        play(idx);
+      }
+    }
+
+    window.addEventListener("kenso:play-segment", onPlaySegment);
+    return () => window.removeEventListener("kenso:play-segment", onPlaySegment);
+  }, [segments, state.playing, seekTo, play]);
+
   // Cumulative audio offsets — bridges audio-time ↔ unix-time for DayTimeline
   const offsets = useMemo(() => {
     let total = 0;
