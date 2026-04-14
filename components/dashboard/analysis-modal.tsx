@@ -529,9 +529,8 @@ export function AnalysisModal({ open, onClose, onJobCreated, initialStep, balanc
                   </>
                 )}
 
-                <div className="flex gap-2 mt-4">
-                  <Button variant="outline" className="flex-1" disabled>Back</Button>
-                  <Button className="flex-1" onClick={() => setStep(1)} disabled={selectedMics.length === 0}>
+                <div className="mt-4">
+                  <Button className="w-full" onClick={() => setStep(1)} disabled={selectedMics.length === 0}>
                     Next ({selectedMics.length} selected)
                   </Button>
                 </div>
