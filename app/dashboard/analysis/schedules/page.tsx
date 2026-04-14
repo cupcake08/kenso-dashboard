@@ -28,7 +28,7 @@ const IS_DEMO = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 const DEMO_SCHEDULES: AnalysisSchedule[] = [
   {
     scheduleId: "sched_demo_01",
-    templateId: "tmpl_staff",
+    templateId: "",
     templateName: "Staff Performance Review",
     micIds: ["mic_lobby_01", "mic_counter_02"],
     shopIds: [],
@@ -48,7 +48,7 @@ const DEMO_SCHEDULES: AnalysisSchedule[] = [
   },
   {
     scheduleId: "sched_demo_02",
-    templateId: "tmpl_compliance",
+    templateId: "",
     templateName: "Compliance Audit",
     micIds: [],
     shopIds: ["shop_001", "shop_002"],
