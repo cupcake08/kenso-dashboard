@@ -237,13 +237,12 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onJobCreated: (job: AnalysisJob) => void;
-  initialStep?: number;
   /** Current credit balance in minutes (used to show insufficient-credits warning) */
   balance?: number;
 }
 
-export function AnalysisModal({ open, onClose, onJobCreated, initialStep, balance }: Props) {
-  const [step, setStep] = useState(initialStep ?? 0);
+export function AnalysisModal({ open, onClose, onJobCreated, balance }: Props) {
+  const [step, setStep] = useState(0);
   const [selectedMics, setSelectedMics] = useState<string[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
   const [devicesLoading, setDevicesLoading] = useState(false);
@@ -261,7 +260,7 @@ export function AnalysisModal({ open, onClose, onJobCreated, initialStep, balanc
   // Reset on open + fetch devices
   useEffect(() => {
     if (open) {
-      setStep(initialStep ?? 0);
+      setStep(0);
       setSelectedMics([]);
       setRangeStart("");
       setRangeEnd("");
@@ -287,7 +286,7 @@ export function AnalysisModal({ open, onClose, onJobCreated, initialStep, balanc
         }
       }
     }
-  }, [open, initialStep, devices.length]);
+  }, [open, devices.length]);
 
   // Focus trap + ESC
   useEffect(() => {

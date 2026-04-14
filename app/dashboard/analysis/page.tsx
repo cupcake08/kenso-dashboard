@@ -59,7 +59,6 @@ export default function AnalysisPage() {
 
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
-  const [modalStep, setModalStep] = useState(0);
 
   // SWR: jobs
   const { data: jobs = [], mutate: mutateJobs } = useApi<AnalysisJob[]>(
@@ -81,7 +80,6 @@ export default function AnalysisPage() {
   const loading = subLoading;
 
   function openModal() {
-    setModalStep(0);
     setModalOpen(true);
   }
 
@@ -266,7 +264,6 @@ export default function AnalysisPage() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         onJobCreated={handleJobCreated}
-        initialStep={modalStep}
         balance={credits}
       />
     </div>

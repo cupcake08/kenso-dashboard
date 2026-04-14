@@ -379,6 +379,9 @@ export function normalizeSchedule(raw: RawAnalysisSchedule): AnalysisSchedule {
   };
 }
 
+// Retained for future admin UI — no current caller in the dashboard.
+// Templates are vestigial in the product flow (see engine.go DefaultTemplateID
+// comment); this helper stays for an eventual template-management admin panel.
 export async function listTemplates(): Promise<AnalysisTemplate[]> {
   // Go nil slices serialize to `null`, not `[]`. Guard before mapping.
   const raw = await apiFetch<RawAnalysisTemplate[] | null>("/analysis/templates");
