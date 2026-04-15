@@ -260,9 +260,22 @@ export default function UsagePage() {
               <p className="text-5xl sm:text-6xl font-bold tabular-nums tracking-tight text-foreground leading-none">
                 {countedHours.toFixed(1)}h
               </p>
-              <p className="mt-2 text-sm text-muted-foreground">
-                of {totalIncluded}h included this month
-              </p>
+              {remainingHours > totalIncluded && totalIncluded > 0 ? (
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {totalIncluded}h included this month
+                  <span className="mx-1.5 text-muted-foreground/40">·</span>
+                  <span className="text-emerald-400 font-medium tabular-nums">
+                    +{(remainingHours - totalIncluded).toFixed(1)}h
+                  </span>{" "}
+                  top-up balance
+                </p>
+              ) : totalIncluded > 0 ? (
+                <p className="mt-2 text-sm text-muted-foreground">
+                  of {totalIncluded}h included this month
+                </p>
+              ) : (
+                <p className="mt-2 text-sm text-muted-foreground">Available pool</p>
+              )}
 
               {/* Progress bar */}
               <div className="mt-4 h-2 w-full rounded-full bg-muted/50 overflow-hidden">
