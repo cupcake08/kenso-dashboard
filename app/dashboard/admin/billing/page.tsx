@@ -200,18 +200,21 @@ function CompanyDetail({ companyId, companyName, onRefresh }: {
   useEffect(() => { load(); }, [load]);
 
   const startTrial = async () => {
-    const days = prompt("Trial days (default 14):", "14");
-    if (days === null) return;
+    const ok = window.confirm(
+      `Start a new 7-day trial for ${companyName}? Credits will be seeded per the Analyze plan.`
+    );
+    if (!ok) return;
     setActionLoading("trial");
     try {
       await adminFetch(`/v2/admin/companies/${companyId}/subscription/start`, {
         method: "POST",
-        body: JSON.stringify({ trial_days: parseInt(days) || 14, plan_id: "basic" }),
+        body: JSON.stringify({ trial_days: 7, plan_id: "analyze" }),
       });
+      toast.success(`Trial started for ${companyName}`);
       await load();
       onRefresh();
     } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : "Failed");
+      toast.error(e instanceof Error ? e.message : "Failed to start trial");
     } finally {
       setActionLoading("");
     }
@@ -356,7 +359,7 @@ function CompanyDetail({ companyId, companyName, onRefresh }: {
               <p className="text-sm text-muted-foreground">No subscription</p>
               <div className="flex items-center gap-2">
                 <Button size="sm" variant="outline" onClick={startTrial} disabled={!!actionLoading} className="h-7 text-xs">
-                  {actionLoading === "trial" ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Play className="h-3 w-3 mr-1" /> Start Trial</>}
+                  {actionLoading === "trial" ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Play className="h-3 w-3 mr-1" /> Start new trial</>}
                 </Button>
                 <Button size="sm" onClick={activate} disabled={!!actionLoading} className="h-7 text-xs">
                   {actionLoading === "activate" ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Zap className="h-3 w-3 mr-1" /> Activate</>}
