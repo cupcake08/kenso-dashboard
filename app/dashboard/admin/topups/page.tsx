@@ -22,6 +22,14 @@ function formatDate(unix: number): string {
   });
 }
 
+// Minutes are the on-wire unit ("credits" internally). Customers pick + see
+// hours. Show hours to the admin too so the request matches what the customer
+// actually ordered. Strip the decimal for whole-number hours (10h, not 10.0h).
+function formatHours(minutes: number): string {
+  const hours = minutes / 60;
+  return hours % 1 === 0 ? `${hours}h` : `${hours.toFixed(1)}h`;
+}
+
 export default function AdminTopupsPage() {
   const [apiKey, setApiKey] = useState("");
   const [authenticated, setAuthenticated] = useState(false);
@@ -70,7 +78,7 @@ export default function AdminTopupsPage() {
         `/v2/admin/topups/${topup.company_id}/${topup.id}/approve`,
         { method: "POST" }
       );
-      toast.success(`Approved ${topup.amount.toLocaleString("en-IN")} credits for ${topup.company_name}. New balance: ${res.new_balance.toLocaleString("en-IN")}`);
+      toast.success(`Approved ${formatHours(topup.amount)} top-up for ${topup.company_name}. New balance: ${formatHours(res.new_balance)}`);
       setTopups((prev) => prev.filter((t) => t.id !== topup.id));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Approval failed");
@@ -81,7 +89,7 @@ export default function AdminTopupsPage() {
 
   async function handleReject(topup: PendingTopup) {
     const ok = window.confirm(
-      `Reject this ${topup.amount.toLocaleString("en-IN")}-credit top-up from ${topup.company_name}?`
+      `Reject this ${formatHours(topup.amount)} top-up from ${topup.company_name}?`
     );
     if (!ok) return;
     setProcessing(topup.id);
@@ -128,7 +136,7 @@ export default function AdminTopupsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">Top-Up Requests</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Review and approve credit top-up requests from tenants</p>
+          <p className="mt-1 text-sm text-muted-foreground">Review and approve top-up requests from tenants</p>
         </div>
         <Button variant="outline" size="sm" onClick={fetchPending} disabled={loading}>
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Refresh"}
@@ -167,12 +175,12 @@ export default function AdminTopupsPage() {
                       <Coins className="h-5 w-5 text-primary" />
                     </div>
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-baseline gap-2">
                         <p className="text-base font-semibold tabular-nums text-foreground">
-                          {topup.amount.toLocaleString("en-IN")} credits
+                          {formatHours(topup.amount)}
                         </p>
-                        <span className="text-xs text-muted-foreground/50">
-                          ~{Math.round(topup.amount / 100 * 10) / 10}h
+                        <span className="text-[0.6875rem] text-muted-foreground/40 tabular-nums">
+                          {topup.amount.toLocaleString("en-IN")} min
                         </span>
                       </div>
                       <div className="flex items-center gap-1.5 mt-1">
