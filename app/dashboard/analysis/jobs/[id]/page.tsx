@@ -3,9 +3,9 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Loader2, ArrowLeft, BarChart3, XCircle, Sparkles, TrendingUp, RotateCcw, Mail } from "lucide-react";
 import { toast } from "sonner";
-import { getJob, cancelJob, apiFetch, normalizeCredits, getAnalysisJobDebug } from "@/lib/api";
+import { getJob, cancelJob, apiFetch, normalizeCredits, getAnalysisJobDebug, getMicResults } from "@/lib/api";
 import { retryAnalysisJob, getAdminKey, hasAdminKey } from "@/lib/admin-api";
-import type { AnalysisJob, AnalysisResult, AnalysisResultV2 } from "@/types/analysis";
+import type { AnalysisJob, AnalysisResult, AnalysisResultV2, MicAnalysisResult } from "@/types/analysis";
 import type { RawCreditsResponse } from "@/types/api";
 import { useApi } from "@/hooks/use-api";
 import { BadgeVariant } from "@/components/ui/badge-variant";
@@ -141,6 +141,9 @@ export default function JobDetailPage() {
   const [selectedMicId, setSelectedMicId] = useState<string>("");
   const [retrying, setRetrying] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [micResultsCache, setMicResultsCache] = useState<Record<string, MicAnalysisResult>>({});
+  const [loadingMicResult, setLoadingMicResult] = useState(false);
+  const [viewingMicId, setViewingMicId] = useState<string | null>(null);
 
   // Admin key from localStorage (developer-only features)
   const [isAdmin, setIsAdmin] = useState(false);
@@ -318,6 +321,40 @@ export default function JobDetailPage() {
     return micId;
   }
 
+  // Fetch and display per-mic analysis result when a mic tab is clicked.
+  async function handleMicTabClick(micId: string) {
+    setSelectedMicId(micId);
+    if (!job?.micResultsAvailable) return;
+
+    if (micId === viewingMicId) {
+      // Clicking same tab again → toggle back to overview.
+      setViewingMicId(null);
+      return;
+    }
+
+    // Check cache first.
+    if (micResultsCache[micId]) {
+      setViewingMicId(micId);
+      return;
+    }
+
+    setLoadingMicResult(true);
+    try {
+      const results = await getMicResults(job.jobId);
+      const cache: Record<string, MicAnalysisResult> = {};
+      for (const r of results) {
+        cache[r.micId] = r;
+      }
+      setMicResultsCache(cache);
+      setViewingMicId(micId);
+    } catch {
+      toast.error("Failed to load per-mic results");
+      setViewingMicId(null);
+    } finally {
+      setLoadingMicResult(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -464,34 +501,54 @@ export default function JobDetailPage() {
         </div>
       )}
 
-      {/* Result — dispatch to ReportShell (v2) or LegacyReport (pre-migration).
-          isV2 narrows via the `vertical` field present on all V2 results. */}
-      {result && (
-        isV2(result)
-          ? <ReportShell result={result} />
-          : <LegacyReport result={result} />
+      {/* Mic tabs — switch between overview and per-mic results */}
+      {selectedMicId && job.micIds.length > 1 && (
+        <div className="flex gap-2">
+          <button
+            onClick={() => setViewingMicId(null)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              viewingMicId === null
+                ? "bg-primary/10 text-primary border border-primary/20"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted/30 border border-transparent"
+            }`}
+          >
+            Overview
+          </button>
+          {job.micIds.map((micId) => (
+            <button
+              key={micId}
+              onClick={() => handleMicTabClick(micId)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                viewingMicId === micId
+                  ? "bg-primary/10 text-primary border border-primary/20"
+                  : selectedMicId === micId
+                    ? "bg-muted/30 text-foreground border border-border"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/30 border border-transparent"
+              }`}
+            >
+              {loadingMicResult && viewingMicId === micId
+                ? "Loading..."
+                : micDisplayName(micId)}
+            </button>
+          ))}
+        </div>
       )}
+
+      {/* Result — dispatch to ReportShell (v2) or LegacyReport (pre-migration).
+          When a mic tab is selected, show that mic's per-mic result. */}
+      {(() => {
+        const activeResult = viewingMicId && micResultsCache[viewingMicId]?.result
+          ? micResultsCache[viewingMicId].result
+          : result;
+        if (!activeResult) return null;
+        return isV2(activeResult)
+          ? <ReportShell result={activeResult} />
+          : <LegacyReport result={activeResult} />;
+      })()}
 
       {/* Recordings player — allows playback of segments referenced in the report */}
       {selectedMicId && (
         <div id="recordings-player">
-          {job.micIds.length > 1 && (
-            <div className="flex gap-2 mb-3">
-              {job.micIds.map((micId) => (
-                <button
-                  key={micId}
-                  onClick={() => setSelectedMicId(micId)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                    selectedMicId === micId
-                      ? "bg-primary/10 text-primary border border-primary/20"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted/30 border border-transparent"
-                  }`}
-                >
-                  {micDisplayName(micId)}
-                </button>
-              ))}
-            </div>
-          )}
           <RecordingsPlayer deviceId={selectedMicId} />
         </div>
       )}

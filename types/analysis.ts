@@ -29,6 +29,7 @@ export interface RawAnalysisJob {
   cached: boolean;
   failure_reason?: string;
   result?: RawAnalysisResult;
+  mic_results_available?: boolean;
   created_at_unix: number;
   completed_at_unix?: number;
 }
@@ -218,6 +219,7 @@ export interface AnalysisJob {
   cached: boolean;
   failureReason?: string;
   result?: AnalysisResult | AnalysisResultV2;
+  micResultsAvailable?: boolean;
   createdAt: string; // ISO
   completedAt?: string; // ISO
 }
@@ -426,3 +428,17 @@ export type AnalysisResultV2 =
   | (AnalysisResultV2Base & { vertical: "restaurant"; restaurantMetrics: RestaurantMetrics })
   | (AnalysisResultV2Base & { vertical: "generic"; genericMetrics: GenericMetrics })
   | (AnalysisResultV2Base & { vertical: "" /* legacy fallback — no vertical-specific metrics */ });
+
+// Per-mic analysis result from the mic_results subcollection (raw snake_case).
+export interface RawMicAnalysisResult {
+  mic_id: string;
+  mic_name: string;
+  result: RawAnalysisResult;
+}
+
+// Per-mic analysis result with normalized camelCase fields for UI.
+export interface MicAnalysisResult {
+  micId: string;
+  micName: string;
+  result: AnalysisResult | AnalysisResultV2;
+}

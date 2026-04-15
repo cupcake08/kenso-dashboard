@@ -7,9 +7,10 @@ import type {
 import type {
   RawAnalysisTemplate, RawAnalysisJob, RawEstimateResponse, RawAnalysisSchedule,
   RawReference, RawRestaurantMetrics, RawGenericMetrics,
-  AnalysisTemplate, AnalysisJob, EstimateResult, AnalysisSchedule,
+  AnalysisTemplate, AnalysisJob, AnalysisResult, AnalysisResultV2, EstimateResult, AnalysisSchedule,
   OperatingSchedule, DaySchedule, DeviceOverride,
-  Reference, RestaurantMetrics, GenericMetrics,
+  Reference, RestaurantMetrics, GenericMetrics, RawAnalysisResult,
+  MicAnalysisResult, RawMicAnalysisResult,
 } from "@/types/analysis";
 import type {
   BusinessType, BusinessTypeState, BusinessTypeSuggestion, CompanyFeatures,
@@ -273,6 +274,7 @@ export function normalizeJob(raw: RawAnalysisJob): AnalysisJob {
     chunkCount: raw.chunk_count,
     chunksCompleted: raw.chunks_completed,
     cached: raw.cached,
+    micResultsAvailable: raw.mic_results_available ?? false,
     failureReason: raw.failure_reason,
     result: raw.result
       ? {
@@ -417,6 +419,94 @@ export async function getJob(jobId: string): Promise<AnalysisJob> {
 
 export async function cancelJob(jobId: string): Promise<void> {
   await apiFetch(`/analysis/jobs/${jobId}/cancel`, { method: "POST" });
+}
+
+export async function getMicResults(jobId: string): Promise<MicAnalysisResult[]> {
+  const raw = await apiFetch<RawMicAnalysisResult[] | null>(`/analysis/jobs/${jobId}/mic-results`);
+  if (!raw) return [];
+  return raw.map((r) => ({
+    micId: r.mic_id,
+    micName: r.mic_name,
+    result: normalizeRawResult(r.result),
+  }));
+}
+
+// normalizeRawResult converts a single RawAnalysisResult (snake_case from Go)
+// into the normalized camelCase shape used by ReportShell / LegacyReport.
+function normalizeRawResult(raw: RawAnalysisResult): AnalysisResult | AnalysisResultV2 {
+  // Build the base normalized result with legacy fields.
+  const normalized: Record<string, unknown> = {
+    summary: raw.summary,
+    transcript: (raw.transcript ?? []).map((u) => ({
+      absoluteTime: u.absolute_time,
+      segmentId: u.segment_id,
+      offsetMs: u.offset_ms,
+      durationMs: u.duration_ms,
+      speaker: u.speaker,
+      text: u.text,
+    })),
+    findings: (raw.findings ?? []).map((f) => ({
+      absoluteTime: f.absolute_time,
+      segmentId: f.segment_id,
+      offsetMs: f.offset_ms,
+      category: f.category,
+      severity: f.severity,
+      title: f.title,
+      description: f.description,
+      evidence: f.evidence,
+      ...(f.evidence_ref && { evidenceRef: normalizeReference(f.evidence_ref) }),
+    })),
+    highlights: (raw.highlights ?? []).map((h) => ({
+      absoluteTime: h.absolute_time,
+      segmentId: h.segment_id,
+      offsetMs: h.offset_ms,
+      type: h.type,
+      description: h.description,
+      ...(h.reference && { reference: normalizeReference(h.reference) }),
+    })),
+    recommendations: raw.recommendations ?? [],
+    metrics: raw.metrics,
+    speakerBreakdown: raw.speaker_breakdown,
+  };
+
+  // V2 identity fields.
+  if (raw.vertical != null) normalized.vertical = raw.vertical as "restaurant" | "generic" | "";
+  if (raw.company_id) normalized.companyId = raw.company_id;
+  if (raw.shop_id) normalized.shopId = raw.shop_id;
+  if (raw.period) {
+    normalized.period = {
+      startUnix: raw.period.start_unix,
+      endUnix: raw.period.end_unix,
+      businessDay: raw.period.business_day,
+      label: raw.period.label,
+    };
+  }
+  if (raw.minutes_analyzed != null) normalized.minutesAnalyzed = raw.minutes_analyzed;
+  if (raw.prompt_version) normalized.promptVersion = raw.prompt_version;
+
+  // V2 editorial.
+  if (raw.lead_theme) normalized.leadTheme = raw.lead_theme;
+  if (raw.section_order) normalized.sectionOrder = raw.section_order;
+  if (raw.hero_quote) normalized.heroQuote = normalizeReference(raw.hero_quote);
+
+  // V2 sentiment.
+  if (raw.sentiment) {
+    normalized.sentiment = {
+      bucketSeconds: raw.sentiment.bucket_seconds,
+      values: raw.sentiment.values,
+      average: raw.sentiment.average,
+    };
+  }
+
+  // V2 vertical extensions.
+  if (raw.restaurant_metrics) {
+    normalized.restaurantMetrics = normalizeRestaurantMetrics(raw.restaurant_metrics);
+  }
+  if (raw.generic_metrics) {
+    normalized.genericMetrics = normalizeGenericMetrics(raw.generic_metrics);
+  }
+
+  return normalized as AnalysisResult | AnalysisResultV2;
 }
 
 export async function estimateCredits(body: {
