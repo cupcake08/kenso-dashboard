@@ -52,7 +52,7 @@ function SourceLabel({
   }
   return (
     <span className="text-sm text-muted-foreground italic">
-      Not set — Kenso will suggest one based on your first analysis
+      Not set — we&apos;ll suggest one based on your first analysis
     </span>
   );
 }
@@ -194,7 +194,7 @@ export default function BusinessTypeSettingsPage() {
               Company description
             </p>
             <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
-              A short description of your business — used to give Kenso context for analysis.
+              A short description of your business — adds context to your AI analysis reports.
             </p>
             <Textarea
               value={description}

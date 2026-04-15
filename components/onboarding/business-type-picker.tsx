@@ -74,7 +74,7 @@ export function BusinessTypePicker({
           onClick={onSkip}
           className="text-sm text-muted-foreground hover:text-foreground underline-offset-4 hover:underline mt-2"
         >
-          Skip — Kenso will figure it out
+          Skip — we&apos;ll detect it from your first analysis
         </button>
       )}
     </div>
