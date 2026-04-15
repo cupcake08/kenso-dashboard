@@ -70,7 +70,7 @@ export default function AdminTopupsPage() {
         `/v2/admin/topups/${topup.company_id}/${topup.id}/approve`,
         { method: "POST" }
       );
-      toast.success(`Approved ${topup.amount.toLocaleString()} credits for ${topup.company_name}. New balance: ${res.new_balance.toLocaleString()}`);
+      toast.success(`Approved ${topup.amount.toLocaleString("en-IN")} credits for ${topup.company_name}. New balance: ${res.new_balance.toLocaleString("en-IN")}`);
       setTopups((prev) => prev.filter((t) => t.id !== topup.id));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Approval failed");
@@ -80,13 +80,15 @@ export default function AdminTopupsPage() {
   }
 
   async function handleReject(topup: PendingTopup) {
-    const reason = prompt("Rejection reason (optional):");
-    if (reason === null) return; // cancelled
+    const ok = window.confirm(
+      `Reject this ${topup.amount.toLocaleString("en-IN")}-credit top-up from ${topup.company_name}?`
+    );
+    if (!ok) return;
     setProcessing(topup.id);
     try {
       await adminFetch(
         `/v2/admin/topups/${topup.company_id}/${topup.id}/reject`,
-        { method: "POST", body: JSON.stringify({ reason: reason || "" }) }
+        { method: "POST", body: JSON.stringify({ reason: "" }) }
       );
       toast.success(`Rejected top-up for ${topup.company_name}`);
       setTopups((prev) => prev.filter((t) => t.id !== topup.id));
@@ -167,7 +169,7 @@ export default function AdminTopupsPage() {
                     <div>
                       <div className="flex items-center gap-2">
                         <p className="text-base font-semibold tabular-nums text-foreground">
-                          {topup.amount.toLocaleString()} credits
+                          {topup.amount.toLocaleString("en-IN")} credits
                         </p>
                         <span className="text-xs text-muted-foreground/50">
                           ~{Math.round(topup.amount / 100 * 10) / 10}h
