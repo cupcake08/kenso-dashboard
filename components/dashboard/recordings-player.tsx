@@ -722,11 +722,13 @@ export const RecordingsPlayer = memo(function RecordingsPlayer({ deviceId }: { d
           variant="ghost"
           size="sm"
           onClick={() => {
+            // dates[] is newest→oldest. Left-chevron = move highlight left
+            // = newer day = lower index.
             const idx = dates.indexOf(selectedDate);
-            if (idx < dates.length - 1) setSelectedDate(dates[idx + 1]);
+            if (idx > 0) setSelectedDate(dates[idx - 1]);
           }}
-          disabled={selectedDate === dates[dates.length - 1]}
-          aria-label="Previous day"
+          disabled={selectedDate === dates[0]}
+          aria-label="Newer day"
           className="h-8 w-8 p-0"
         >
           <ChevronLeft className="h-4 w-4" />
@@ -752,11 +754,12 @@ export const RecordingsPlayer = memo(function RecordingsPlayer({ deviceId }: { d
           variant="ghost"
           size="sm"
           onClick={() => {
+            // Right-chevron = move highlight right = older day = higher index.
             const idx = dates.indexOf(selectedDate);
-            if (idx > 0) setSelectedDate(dates[idx - 1]);
+            if (idx < dates.length - 1) setSelectedDate(dates[idx + 1]);
           }}
-          disabled={selectedDate === dates[0]}
-          aria-label="Next day"
+          disabled={selectedDate === dates[dates.length - 1]}
+          aria-label="Older day"
           className="h-8 w-8 p-0"
         >
           <ChevronRight className="h-4 w-4" />
