@@ -1,13 +1,34 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Loader2, Check, Zap, ChevronDown, Moon } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Loader2, Check, Zap, ChevronDown, Moon, AlertCircle, Sparkles, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { estimateCredits, apiFetch, normalizeDevice } from "@/lib/api";
-import { parseCron } from "@/lib/cron";
+import { estimateCredits, apiFetch, normalizeCredits, normalizeDevice } from "@/lib/api";
+import { parseCron, expandCronDays } from "@/lib/cron";
+import { useApi } from "@/hooks/use-api";
+import { useSubscription } from "@/hooks/use-subscription";
 import type { AnalysisSchedule, EstimateResult } from "@/types/analysis";
-import type { Device, RawDevice } from "@/types/api";
+import type { Device, RawCreditsResponse, RawDevice } from "@/types/api";
+
+// Format minutes (1 credit = 1 minute) into something a customer reads.
+function formatMinAsHours(minutes: number): string {
+  if (minutes < 60) return `${Math.round(minutes)} min`;
+  const hours = minutes / 60;
+  return hours % 1 === 0 ? `${hours}h` : `${hours.toFixed(1)}h`;
+}
+
+// Approximate runs-per-month from a 5-field cron rule. Counts firing days
+// from the day-of-week field × 4.345 weeks per month. Good enough for the
+// "this schedule will use ~Xh/month" capacity preview — not a billing-grade
+// forecast.
+function runsPerMonthFromCron(cron: string): number {
+  const parts = cron.split(" ");
+  if (parts.length !== 5) return 30; // fallback: assume daily
+  const days = expandCronDays(parts[4]);
+  return Math.max(1, Math.round(days.length * 4.345));
+}
 
 const IS_DEMO = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
@@ -104,6 +125,14 @@ function theoreticalEstimate(windowMinutes: number, deviceCount: number, complex
 
 export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps) {
   const isEdit = !!initial;
+  const router = useRouter();
+  const { needsUpgrade } = useSubscription();
+  // Current credit balance — used to preview whether the schedule is sustainable.
+  const { data: credits } = useApi<ReturnType<typeof normalizeCredits>>(
+    IS_DEMO ? null : "/credits",
+    async (url) => normalizeCredits(await apiFetch<RawCreditsResponse>(url)),
+  );
+  const balanceMin = credits?.balance ?? 0;
 
   const [selectedMicIds, setSelectedMicIds] = useState<string[]>(initial?.micIds ?? []);
   const [scheduleType, setScheduleType] = useState<"recurring" | "one_time">(initial?.scheduleType ?? "recurring");
@@ -589,7 +618,96 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
         </div>
       </div>
 
-      {/* Footer: estimate + actions */}
+      {/* Sustainability preview — shown when we have an estimate, helps the
+          customer see whether their balance can carry the schedule before they
+          commit. All units in hours/minutes (not "credits") because that's
+          what the customer thinks in. */}
+      {estimate && estimate.estimatedCredits > 0 && (() => {
+        const perRunMin = estimate.estimatedCredits;
+        const [endHStr, endMStr] = analysisEnd.split(":");
+        const monthlyMin = scheduleType === "recurring" && selectedDays.length > 0
+          ? perRunMin * runsPerMonthFromCron(buildCron(selectedDays, parseInt(endHStr) || 0, parseInt(endMStr) || 0))
+          : perRunMin;
+        const runsCovered = balanceMin > 0 && perRunMin > 0 ? Math.floor(balanceMin / perRunMin) : 0;
+        const cantCoverOneRun = balanceMin > 0 && balanceMin < perRunMin;
+        const cantCoverMonth = scheduleType === "recurring" && balanceMin < monthlyMin;
+        const showAnyWarning = balanceMin > 0 && (cantCoverOneRun || cantCoverMonth);
+
+        if (!showAnyWarning) {
+          return (
+            <div className="px-5 pb-3 -mt-1">
+              <div className="rounded-md bg-muted/30 px-3 py-2 text-[11px] text-muted-foreground">
+                <span className="text-foreground font-medium tabular-nums">~{formatMinAsHours(perRunMin)} per run</span>
+                {scheduleType === "recurring" && (
+                  <>
+                    <span className="mx-1.5 text-muted-foreground/40">·</span>
+                    <span className="tabular-nums">~{formatMinAsHours(monthlyMin)}/month</span>
+                  </>
+                )}
+                <span className="mx-1.5 text-muted-foreground/40">·</span>
+                <span>{estimateSource === "historical" ? "based on yesterday" : "typical-day estimate"}</span>
+              </div>
+            </div>
+          );
+        }
+
+        const isCritical = cantCoverOneRun;
+        return (
+          <div className="px-5 pb-3 -mt-1">
+            <div className={cn(
+              "rounded-lg border p-3",
+              isCritical ? "bg-red-400/5 border-red-400/30" : "bg-amber-400/5 border-amber-400/30",
+            )}>
+              <div className="flex items-start gap-2.5">
+                <AlertCircle className={cn("h-4 w-4 shrink-0 mt-0.5", isCritical ? "text-red-400" : "text-amber-400")} aria-hidden />
+                <div className="flex-1 min-w-0" role={isCritical ? "alert" : "note"}>
+                  {isCritical ? (
+                    <>
+                      <p className="text-sm font-medium text-foreground">
+                        Not enough hours for even one run
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Each run needs ~{formatMinAsHours(perRunMin)}; you have {formatMinAsHours(balanceMin)}.
+                        {needsUpgrade
+                          ? " Upgrade to a paid plan first."
+                          : " Top up your balance first."}
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm font-medium text-foreground">
+                        Balance covers ~{runsCovered} {runsCovered === 1 ? "run" : "runs"}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        This schedule will use ~{formatMinAsHours(monthlyMin)}/month at this cadence.
+                        You have {formatMinAsHours(balanceMin)} —
+                        {needsUpgrade
+                          ? " upgrade to keep it running long-term."
+                          : " top up to keep it running long-term."}
+                      </p>
+                    </>
+                  )}
+                </div>
+                <Button
+                  size="sm"
+                  variant={isCritical ? "default" : "outline"}
+                  onClick={() => router.push(needsUpgrade ? "/dashboard/usage?upgrade=1" : "/dashboard/usage")}
+                  className="shrink-0"
+                >
+                  {needsUpgrade ? (
+                    <><Sparkles className="h-3.5 w-3.5 mr-1.5" aria-hidden />Upgrade</>
+                  ) : (
+                    <><TrendingUp className="h-3.5 w-3.5 mr-1.5" aria-hidden />Top up</>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Footer: status + actions. Cost preview moved into the sustainability
+          panel above; this row stays minimal so the primary CTA dominates. */}
       <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-border/60">
         <div className="flex items-center gap-2 text-[11px] min-w-0">
           {estimating ? (
@@ -597,24 +715,11 @@ export function ScheduleForm({ initial, onSubmit, onCancel }: ScheduleFormProps)
               <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground shrink-0" />
               <span className="text-muted-foreground">Calculating…</span>
             </>
-          ) : estimate ? (
-            <>
-              <Zap className="h-3.5 w-3.5 text-primary shrink-0" />
-              <span className="text-foreground font-semibold tabular-nums">~{estimate.estimatedCredits} credits per run</span>
-              <span
-                className="text-muted-foreground"
-                title={estimateSource === "historical"
-                  ? `Based on yesterday's actual audio (${estimate.estimatedDurationMin.toFixed(0)} min)`
-                  : "Estimate assumes ~50% voice activity during the window. Actual cost will depend on real audio captured."}
-              >
-                · {estimateSource === "historical" ? "based on yesterday" : "typical-day estimate"}
-              </span>
-            </>
+          ) : !estimate && !submitError ? (
+            <span className="text-muted-foreground">Select devices to see hours per run</span>
           ) : submitError ? (
             <span className="text-status-offline font-medium" role="alert">{submitError}</span>
-          ) : (
-            <span className="text-muted-foreground">Select devices to see cost</span>
-          )}
+          ) : null}
         </div>
         <Button size="sm" onClick={handleSubmit} disabled={!isValid || submitting}>
           {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />}
