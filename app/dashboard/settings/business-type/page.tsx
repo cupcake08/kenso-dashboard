@@ -1,7 +1,8 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, AlertCircle, X } from "lucide-react";
+import { ArrowLeft, Loader2, AlertCircle, X } from "lucide-react";
 import { toast } from "sonner";
 import { useSWRConfig } from "swr";
 import { useBusinessType } from "@/hooks/use-business-type";
@@ -58,6 +59,7 @@ function SourceLabel({
 }
 
 export default function BusinessTypeSettingsPage() {
+  const router = useRouter();
   const { state, isLoading, error, mutate } = useBusinessType();
   const { mutate: globalMutate } = useSWRConfig();
 
@@ -134,6 +136,15 @@ export default function BusinessTypeSettingsPage() {
   if (isLoading) {
     return (
       <div className="max-w-2xl space-y-6">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => router.push("/dashboard/settings")}
+          className="-ml-2 text-muted-foreground hover:text-foreground"
+        >
+          <ArrowLeft className="h-4 w-4 mr-1.5" />
+          Settings
+        </Button>
         <Skeleton className="h-10 w-48" />
         <Skeleton className="h-5 w-72" />
         <div className="space-y-3 mt-6">
@@ -148,7 +159,16 @@ export default function BusinessTypeSettingsPage() {
 
   if (error) {
     return (
-      <div className="max-w-2xl">
+      <div className="max-w-2xl space-y-4">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => router.push("/dashboard/settings")}
+          className="-ml-2 text-muted-foreground hover:text-foreground"
+        >
+          <ArrowLeft className="h-4 w-4 mr-1.5" />
+          Settings
+        </Button>
         <div className="flex items-center gap-3 rounded-xl border border-red-400/20 bg-red-400/5 p-4 text-red-400">
           <AlertCircle className="h-4 w-4 shrink-0" />
           <p className="text-sm">Failed to load business type settings. Please refresh.</p>
@@ -160,6 +180,17 @@ export default function BusinessTypeSettingsPage() {
   return (
     <>
       <div className="max-w-2xl space-y-8">
+        {/* Back */}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => router.push("/dashboard/settings")}
+          className="-ml-2 text-muted-foreground hover:text-foreground"
+        >
+          <ArrowLeft className="h-4 w-4 mr-1.5" />
+          Settings
+        </Button>
+
         {/* Header */}
         <motion.div {...fadeUp}>
           <h1 className="font-display text-3xl font-semibold text-foreground tracking-tight">
