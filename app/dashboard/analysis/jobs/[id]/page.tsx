@@ -3,7 +3,8 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Loader2, ArrowLeft, BarChart3, XCircle, Sparkles, TrendingUp, RotateCcw, Mail } from "lucide-react";
 import { toast } from "sonner";
-import { getJob, cancelJob, apiFetch, normalizeCredits, getAnalysisJobDebug, retryAnalysisJob } from "@/lib/api";
+import { getJob, cancelJob, apiFetch, normalizeCredits, getAnalysisJobDebug } from "@/lib/api";
+import { retryAnalysisJob, getAdminKey, hasAdminKey } from "@/lib/admin-api";
 import type { AnalysisJob, AnalysisResult, AnalysisResultV2 } from "@/types/analysis";
 import type { RawCreditsResponse } from "@/types/api";
 import { useApi } from "@/hooks/use-api";
@@ -142,15 +143,13 @@ export default function JobDetailPage() {
   const [sharing, setSharing] = useState(false);
 
   // Admin key from localStorage (developer-only features)
-  const [adminKey, setAdminKey] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      setAdminKey(localStorage.getItem("admin_api_key"));
-      // Listen for storage changes (e.g. admin gate sets the key)
-      const handler = () => setAdminKey(localStorage.getItem("admin_api_key"));
-      window.addEventListener("storage", handler);
-      return () => window.removeEventListener("storage", handler);
-    }
+    if (typeof window === "undefined") return;
+    setIsAdmin(hasAdminKey());
+    const handler = () => setIsAdmin(hasAdminKey());
+    window.addEventListener("storage", handler);
+    return () => window.removeEventListener("storage", handler);
   }, []);
 
   // Subscription state — used to branch the failure-reason CTA between
@@ -268,10 +267,10 @@ export default function JobDetailPage() {
   }
 
   async function handleRetry() {
-    if (!job || !adminKey) return;
+    if (!job) return;
     setRetrying(true);
     try {
-      const result = await retryAnalysisJob(job.jobId, adminKey);
+      const result = await retryAnalysisJob(job.jobId);
       toast.success(`New job created: ${result.new_job_id}`);
       router.push(`/dashboard/analysis/jobs/${result.new_job_id}`);
     } catch (e: unknown) {
@@ -282,10 +281,10 @@ export default function JobDetailPage() {
   }
 
   async function handleShareReport() {
-    if (!job || !adminKey) return;
+    if (!job) return;
     setSharing(true);
     try {
-      const debug = await getAnalysisJobDebug(job.jobId, adminKey);
+      const debug = await getAnalysisJobDebug(job.jobId, getAdminKey());
       const subject = encodeURIComponent(`Analysis Job Failed: ${job.jobId}`);
       const body = encodeURIComponent(
         `Job ID: ${job.jobId}\n` +
@@ -436,7 +435,7 @@ export default function JobDetailPage() {
                 </Button>
               )}
               {/* Admin-only buttons — visible only when admin API key is in localStorage */}
-              {adminKey && (job.status === "failed" || job.status === "refunded") && (
+              {isAdmin && (job.status === "failed" || job.status === "refunded") && (
                 <>
                   <Button
                     variant="outline"

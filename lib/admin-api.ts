@@ -167,6 +167,20 @@ export async function retryDelivery(deliveryId: string): Promise<void> {
   await adminFetch(`/v2/admin/webhook-deliveries/${deliveryId}/retry`, { method: "POST" });
 }
 
+export type RetryJobResponse = {
+  original_job_id: string;
+  new_job_id: string;
+  status: string;
+  created_at_unix: number;
+};
+
+export async function retryAnalysisJob(jobId: string): Promise<RetryJobResponse> {
+  return adminFetch<RetryJobResponse>(
+    `/v2/admin/analysis-jobs/${encodeURIComponent(jobId)}/retry`,
+    { method: "POST" },
+  );
+}
+
 export async function listAuditLog(cid: string): Promise<unknown[]> {
   return adminFetch<unknown[]>(`/v2/admin/companies/${cid}/api-audit-log`);
 }
