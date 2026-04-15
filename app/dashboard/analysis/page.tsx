@@ -69,11 +69,12 @@ export default function AnalysisPage() {
   );
 
   // SWR: schedules — surfaced inline above Recent Jobs so customers see what's
-  // recurring without bouncing to the dedicated /schedules page.
+  // recurring without bouncing to the dedicated /schedules page. Revalidates
+  // on focus so the "Next in Xh" countdowns reflect a freshly-fired schedule.
   const { data: schedules = [] } = useApi<AnalysisSchedule[]>(
     IS_DEMO ? null : "/_analysis_schedules",
     async () => listSchedules(),
-    { fallbackData: IS_DEMO ? [] : undefined },
+    { fallbackData: IS_DEMO ? [] : undefined, revalidateOnFocus: true, dedupingInterval: 5000 },
   );
 
   // SWR: credits — same cache key + return type as usage page so both share one cache entry
@@ -265,8 +266,13 @@ export default function AnalysisPage() {
                 const isPaused = s.pausedUntil && new Date(s.pausedUntil).getTime() > Date.now();
                 const cadence = s.scheduleType === "recurring"
                   ? cronToDaysLabel(s.recurrenceRule)
-                  : "Once";
+                  : "One time";
                 const time = s.analysisStartTime || "";
+                // Primary identifier: cadence + time. Template name is omitted —
+                // the AI vertical drives the analysis content, so the template
+                // string isn't a meaningful business label.
+                const primaryParts = [cadence, time].filter(Boolean);
+                const primary = primaryParts.join(" · ");
                 return (
                   <Link
                     key={s.scheduleId}
@@ -275,10 +281,9 @@ export default function AnalysisPage() {
                   >
                     <CalendarClock className="h-4 w-4 text-muted-foreground/60 shrink-0" aria-hidden />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">{s.templateName || "Analysis"}</p>
+                      <p className="text-sm font-medium text-foreground truncate">{primary}</p>
                       <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                        {cadence}
-                        {time && (<><span className="mx-1.5 text-muted-foreground/40">·</span>{time}</>)}
+                        {s.micIds.length > 0 ? `${s.micIds.length} ${s.micIds.length === 1 ? "device" : "devices"}` : "All shop devices"}
                         {s.analysisWindowHours > 0 && (
                           <><span className="mx-1.5 text-muted-foreground/40">·</span>{s.analysisWindowHours}h window</>
                         )}
@@ -324,74 +329,99 @@ export default function AnalysisPage() {
             </div>
           ) : (
             <>
-              {/* Desktop table */}
+              {/* Desktop table — primary identifier is the time range, since
+                  template_name is no longer a meaningful business concept
+                  (the AI vertical drives the analysis, not a template). */}
               <div className="hidden sm:block rounded-xl border border-border overflow-hidden">
                 <table className="w-full text-sm">
                   <thead className="border-b border-border bg-muted/20">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Template</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Time Range</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">When</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Devices</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Status</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Hours</th>
                       <th className="px-4 py-3" />
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/50">
-                    {visibleJobs.map((job) => (
-                      <tr
-                        key={job.jobId}
-                        className="hover:bg-muted/10 cursor-pointer transition-colors"
-                        onClick={() => router.push(`/dashboard/analysis/jobs/${job.jobId}`)}
-                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); router.push(`/dashboard/analysis/jobs/${job.jobId}`); }}}
-                        tabIndex={0}
-                        role="link"
-                        aria-label={`${job.templateName} — ${job.status}`}
-                      >
-                        <td className="px-4 py-3">
-                          <span className="font-medium text-foreground">{job.templateName}</span>
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground text-xs tabular-nums">
-                          {formatTimeRange(job.timeRangeStart, job.timeRangeEnd)}
-                        </td>
-                        <td className="px-4 py-3">
-                          <BadgeVariant variant={(STATUS_COLORS[job.status] as "emerald") ?? "slate"} className="capitalize text-xs">
-                            {job.status}
-                          </BadgeVariant>
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground tabular-nums">
-                          {((job.actualCredits > 0 ? job.actualCredits : job.estimatedCredits) / 60).toFixed(1)}h
-                        </td>
-                        <td className="px-4 py-3">
-                          <ChevronRight className="h-4 w-4 text-muted-foreground/40" />
-                        </td>
-                      </tr>
-                    ))}
+                    {visibleJobs.map((job) => {
+                      const isScheduled = !!(job as { scheduleId?: string }).scheduleId;
+                      return (
+                        <tr
+                          key={job.jobId}
+                          className="hover:bg-muted/10 cursor-pointer transition-colors"
+                          onClick={() => router.push(`/dashboard/analysis/jobs/${job.jobId}`)}
+                          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); router.push(`/dashboard/analysis/jobs/${job.jobId}`); }}}
+                          tabIndex={0}
+                          role="link"
+                          aria-label={`Analysis ${formatTimeRange(job.timeRangeStart, job.timeRangeEnd)} — ${job.status}`}
+                        >
+                          <td className="px-4 py-3">
+                            <p className="font-medium text-foreground">{formatTimeRange(job.timeRangeStart, job.timeRangeEnd)}</p>
+                            {isScheduled && (
+                              <p className="text-[0.6875rem] text-muted-foreground/60 mt-0.5 flex items-center gap-1">
+                                <CalendarClock className="h-3 w-3" aria-hidden />
+                                Scheduled
+                              </p>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-muted-foreground text-xs tabular-nums">
+                            {job.micIds.length} {job.micIds.length === 1 ? "device" : "devices"}
+                          </td>
+                          <td className="px-4 py-3">
+                            <BadgeVariant variant={(STATUS_COLORS[job.status] as "emerald") ?? "slate"} className="capitalize text-xs">
+                              {job.status}
+                            </BadgeVariant>
+                          </td>
+                          <td className="px-4 py-3 text-muted-foreground tabular-nums">
+                            {((job.actualCredits > 0 ? job.actualCredits : job.estimatedCredits) / 60).toFixed(1)}h
+                          </td>
+                          <td className="px-4 py-3">
+                            <ChevronRight className="h-4 w-4 text-muted-foreground/40" />
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
 
               {/* Mobile card list */}
               <div className="sm:hidden space-y-2">
-                {visibleJobs.map((job) => (
-                  <Link
-                    key={job.jobId}
-                    href={`/dashboard/analysis/jobs/${job.jobId}`}
-                    className="flex items-center gap-3 rounded-xl border border-border bg-card/50 p-4 hover:bg-muted/10 transition-colors"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">{job.templateName}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5 tabular-nums">
-                        {formatTimeRange(job.timeRangeStart, job.timeRangeEnd)}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <BadgeVariant variant={(STATUS_COLORS[job.status] as "emerald") ?? "slate"} className="capitalize text-xs">
-                        {job.status}
-                      </BadgeVariant>
-                      <ChevronRight className="h-4 w-4 text-muted-foreground/40" />
-                    </div>
-                  </Link>
-                ))}
+                {visibleJobs.map((job) => {
+                  const isScheduled = !!(job as { scheduleId?: string }).scheduleId;
+                  return (
+                    <Link
+                      key={job.jobId}
+                      href={`/dashboard/analysis/jobs/${job.jobId}`}
+                      className="flex items-center gap-3 rounded-xl border border-border bg-card/50 p-4 hover:bg-muted/10 transition-colors"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-foreground tabular-nums truncate">
+                          {formatTimeRange(job.timeRangeStart, job.timeRangeEnd)}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5">
+                          <span>{job.micIds.length} {job.micIds.length === 1 ? "device" : "devices"}</span>
+                          {isScheduled && (
+                            <>
+                              <span className="text-muted-foreground/40">·</span>
+                              <span className="flex items-center gap-1">
+                                <CalendarClock className="h-3 w-3" aria-hidden />
+                                Scheduled
+                              </span>
+                            </>
+                          )}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <BadgeVariant variant={(STATUS_COLORS[job.status] as "emerald") ?? "slate"} className="capitalize text-xs">
+                          {job.status}
+                        </BadgeVariant>
+                        <ChevronRight className="h-4 w-4 text-muted-foreground/40" />
+                      </div>
+                    </Link>
+                  );
+                })}
               </div>
 
               {/* Pagination */}

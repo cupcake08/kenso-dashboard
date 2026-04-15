@@ -286,16 +286,23 @@ export default function JobDetailPage() {
 
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-foreground">{job.templateName}</h1>
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* Title is the time range — that's what identifies an analysis to
+                the customer. Template name is omitted; vertical drives content. */}
+            <h1 className="text-2xl font-bold text-foreground tabular-nums">
+              {new Date(job.timeRangeStart).toLocaleDateString("en-IN", {
+                day: "numeric", month: "short", year: "numeric",
+                timeZone: "Asia/Kolkata",
+              })}
+            </h1>
             <BadgeVariant variant={(STATUS_COLORS[job.status] as "emerald") ?? "slate"} className="capitalize">
               {job.status}
             </BadgeVariant>
             {job.cached && <BadgeVariant variant="slate">Cached</BadgeVariant>}
           </div>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {new Date(job.timeRangeStart).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} –{" "}
-            {new Date(job.timeRangeEnd).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata" })}
+          <p className="mt-1 text-sm text-muted-foreground tabular-nums">
+            {new Date(job.timeRangeStart).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "numeric", minute: "2-digit" })} –{" "}
+            {new Date(job.timeRangeEnd).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "numeric", minute: "2-digit" })}
           </p>
         </div>
         {isInProgress && (
