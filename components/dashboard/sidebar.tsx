@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mic, CreditCard, Settings, ChevronLeft, ChevronRight, BarChart3, X, Shield } from "lucide-react";
+import { Mic, CreditCard, Settings, ChevronLeft, ChevronRight, BarChart3, X, Shield, Coins } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSubscription } from "@/hooks/use-subscription";
 
@@ -17,6 +17,7 @@ const navItems = [
 
 const adminItems = [
   { href: "/dashboard/admin/billing", icon: Shield, label: "Billing Admin" },
+  { href: "/dashboard/admin/topups",  icon: Coins,  label: "Top-ups" },
 ];
 
 interface SidebarProps {
