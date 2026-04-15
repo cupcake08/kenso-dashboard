@@ -4,8 +4,9 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { BarChart3, Plus, Loader2, ChevronRight, Gift, CalendarClock, Lock, AlertCircle, Sparkles, TrendingUp } from "lucide-react";
-import { listJobs, apiFetch, normalizeCredits } from "@/lib/api";
-import type { AnalysisJob } from "@/types/analysis";
+import { listJobs, listSchedules, apiFetch, normalizeCredits } from "@/lib/api";
+import type { AnalysisJob, AnalysisSchedule } from "@/types/analysis";
+import { cronToDaysLabel } from "@/lib/cron";
 import type { RawCreditsResponse } from "@/types/api";
 import { useApi } from "@/hooks/use-api";
 import { useSubscription } from "@/hooks/use-subscription";
@@ -65,6 +66,14 @@ export default function AnalysisPage() {
     IS_DEMO ? null : "/_analysis_jobs",
     async () => listJobs(),
     { fallbackData: IS_DEMO ? DEMO_JOBS : undefined },
+  );
+
+  // SWR: schedules — surfaced inline above Recent Jobs so customers see what's
+  // recurring without bouncing to the dedicated /schedules page.
+  const { data: schedules = [] } = useApi<AnalysisSchedule[]>(
+    IS_DEMO ? null : "/_analysis_schedules",
+    async () => listSchedules(),
+    { fallbackData: IS_DEMO ? [] : undefined },
   );
 
   // SWR: credits — same cache key + return type as usage page so both share one cache entry
@@ -222,6 +231,86 @@ export default function AnalysisPage() {
           </Button>
         </div>
       )}
+
+      {/* Schedules — compact inline preview, before Recent Jobs.
+          Empty case: skipped entirely (schedules are an opt-in feature) so
+          first-time customers don't see a dead-empty section. */}
+      {(hasAnalysis !== false || IS_DEMO) && schedules.length > 0 && (() => {
+        const visible = schedules.slice(0, 3);
+        const more = schedules.length - visible.length;
+        const formatNextRun = (iso: string): string => {
+          const d = new Date(iso);
+          const now = Date.now();
+          const diffMs = d.getTime() - now;
+          if (diffMs <= 0) return "due now";
+          const diffH = diffMs / 3600000;
+          if (diffH < 1) return `in ${Math.round(diffMs / 60000)} min`;
+          if (diffH < 24) return `in ${Math.round(diffH)}h`;
+          const diffD = Math.round(diffH / 24);
+          return `in ${diffD}d`;
+        };
+        return (
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xs font-medium uppercase tracking-widest text-muted-foreground">Schedules</h2>
+              <Link
+                href="/dashboard/analysis/schedules"
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                View all
+              </Link>
+            </div>
+            <div className="rounded-xl border border-border bg-card/30 divide-y divide-border/50 overflow-hidden">
+              {visible.map((s) => {
+                const isPaused = s.pausedUntil && new Date(s.pausedUntil).getTime() > Date.now();
+                const cadence = s.scheduleType === "recurring"
+                  ? cronToDaysLabel(s.recurrenceRule)
+                  : "Once";
+                const time = s.analysisStartTime || "";
+                return (
+                  <Link
+                    key={s.scheduleId}
+                    href={`/dashboard/analysis/schedules?id=${s.scheduleId}`}
+                    className="flex items-center gap-3 px-4 py-3 hover:bg-muted/10 transition-colors"
+                  >
+                    <CalendarClock className="h-4 w-4 text-muted-foreground/60 shrink-0" aria-hidden />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">{s.templateName || "Analysis"}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                        {cadence}
+                        {time && (<><span className="mx-1.5 text-muted-foreground/40">·</span>{time}</>)}
+                        {s.analysisWindowHours > 0 && (
+                          <><span className="mx-1.5 text-muted-foreground/40">·</span>{s.analysisWindowHours}h window</>
+                        )}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {isPaused ? (
+                        <BadgeVariant variant="amber" className="text-xs">Paused</BadgeVariant>
+                      ) : !s.enabled ? (
+                        <BadgeVariant variant="slate" className="text-xs">Off</BadgeVariant>
+                      ) : (
+                        <span className="text-xs text-muted-foreground/70 tabular-nums">
+                          Next {formatNextRun(s.nextRunAt)}
+                        </span>
+                      )}
+                      <ChevronRight className="h-4 w-4 text-muted-foreground/40" aria-hidden />
+                    </div>
+                  </Link>
+                );
+              })}
+              {more > 0 && (
+                <Link
+                  href="/dashboard/analysis/schedules"
+                  className="block px-4 py-2.5 text-center text-xs text-muted-foreground hover:bg-muted/10 hover:text-foreground transition-colors"
+                >
+                  +{more} more {more === 1 ? "schedule" : "schedules"}
+                </Link>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Recent Jobs */}
       {(hasAnalysis !== false || IS_DEMO) && (
