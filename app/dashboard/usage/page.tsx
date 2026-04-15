@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { TrendingUp, RefreshCw, X, Clock, ArrowUpRight, ArrowDownRight, Receipt, CheckCircle2, AlertCircle, Layers, Sparkles, Mail } from "lucide-react";
 import { toast } from "sonner";
@@ -127,6 +127,7 @@ export default function UsagePage() {
 }
 
 function UsagePageInner() {
+  const router = useRouter();
   const [showTopup, setShowTopup] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
   // Auto-open the upgrade modal when arriving with ?upgrade=1 — used from the
@@ -136,6 +137,14 @@ function UsagePageInner() {
   useEffect(() => {
     if (searchParams?.get("upgrade") === "1") setShowUpgrade(true);
   }, [searchParams]);
+  // Strip the ?upgrade=1 param when the modal closes so a page refresh or
+  // browser-back doesn't re-open it every time.
+  function closeUpgrade() {
+    setShowUpgrade(false);
+    if (searchParams?.get("upgrade") === "1") {
+      router.replace("/dashboard/usage");
+    }
+  }
   const [selectedHours, setSelectedHours] = useState(25);
   const [topupStatus, setTopupStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
 
@@ -568,7 +577,7 @@ function UsagePageInner() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
-            onClick={() => setShowUpgrade(false)}
+            onClick={closeUpgrade}
           >
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 8 }}
@@ -586,7 +595,7 @@ function UsagePageInner() {
                   <h2 className="text-lg font-semibold tracking-tight text-foreground">Upgrade to full plan</h2>
                 </div>
                 <button
-                  onClick={() => setShowUpgrade(false)}
+                  onClick={closeUpgrade}
                   className="p-1 rounded text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <X className="h-4 w-4" />

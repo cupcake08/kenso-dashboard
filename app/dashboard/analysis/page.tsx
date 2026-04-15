@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { BarChart3, Plus, Loader2, ChevronRight, Gift, CalendarClock, Lock } from "lucide-react";
+import { BarChart3, Plus, Loader2, ChevronRight, Gift, CalendarClock, Lock, AlertCircle, Sparkles, TrendingUp } from "lucide-react";
 import { listJobs, apiFetch, normalizeCredits } from "@/lib/api";
 import type { AnalysisJob } from "@/types/analysis";
 import type { RawCreditsResponse } from "@/types/api";
@@ -132,58 +132,80 @@ export default function AnalysisPage() {
         )}
       </div>
 
-      {/* Trial banner */}
-      {subState === "trialing" && (
-        <div className="flex items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 px-5 py-3">
-          <Gift className="h-5 w-5 text-primary shrink-0" />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-foreground">Free trial — {(credits / 60).toFixed(1)}h of analysis available</p>
-            {trialEndsAt && (
-              <p className="text-xs text-muted-foreground">
-                Trial ends {new Date(trialEndsAt).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}
-              </p>
-            )}
-          </div>
-          <Button variant="outline" size="sm" asChild>
-            <Link href="/dashboard/usage?upgrade=1">Upgrade</Link>
-          </Button>
-        </div>
-      )}
-
-      {/* Failed-due-to-credits callout. If any recent job failed because the
-          customer ran out of hours, surface it prominently with a direct
-          upgrade/top-up path — don't rely on them scrolling to the list. */}
       {(() => {
+        // Collapse the two banner decisions into one place so trial + credit-fail
+        // callouts don't stack and compete for attention.
         const creditFails = jobs.filter(
           (j) => (j.status === "failed" || j.status === "refunded") &&
                  j.failureReason &&
                  (j.failureReason.includes("insufficient credits") ||
                   j.failureReason.includes("credit reserve")),
         );
-        if (creditFails.length === 0) return null;
+        const needsUpgrade = subState === "trialing" || subState === "trial_ended";
+        const showFailsCallout = creditFails.length > 0;
+
         return (
-          <div className="flex items-start gap-3 rounded-xl border border-red-400/30 bg-red-400/5 px-5 py-3.5">
-            <BarChart3 className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-foreground">
-                {creditFails.length === 1
-                  ? "1 analysis couldn't run — not enough hours"
-                  : `${creditFails.length} analyses couldn't run — not enough hours`}
-              </p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {subState === "trialing" || subState === "trial_ended"
-                  ? "Upgrade to a paid plan to continue."
-                  : "Top up your balance to unblock scheduled analyses."}
-              </p>
-            </div>
-            <Button size="sm" asChild className="shrink-0">
-              <Link href={subState === "trialing" || subState === "trial_ended"
-                ? "/dashboard/usage?upgrade=1"
-                : "/dashboard/usage"}>
-                {subState === "trialing" || subState === "trial_ended" ? "Upgrade" : "Top up"}
-              </Link>
-            </Button>
-          </div>
+          <>
+            {/* Trial banner — suppressed when the failed-credits callout is showing,
+                to avoid two attention-claiming blocks telling the same story. */}
+            {subState === "trialing" && !showFailsCallout && (
+              <div className="flex items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 px-5 py-3">
+                <Gift className="h-5 w-5 text-primary shrink-0" aria-hidden />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground">Free trial — {(credits / 60).toFixed(1)}h of analysis available</p>
+                  {trialEndsAt && (
+                    <p className="text-xs text-muted-foreground">
+                      Trial ends {new Date(trialEndsAt).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}
+                    </p>
+                  )}
+                </div>
+                <Button variant="outline" size="sm" asChild>
+                  <Link href="/dashboard/usage?upgrade=1">
+                    <Sparkles className="h-3.5 w-3.5 mr-1.5" aria-hidden />
+                    Upgrade
+                  </Link>
+                </Button>
+              </div>
+            )}
+
+            {/* Failed-due-to-credits callout — primary surface when there are
+                failed scheduled analyses. Mobile-friendly wrap so the button
+                doesn't crowd the text on a phone. */}
+            {showFailsCallout && (
+              <div
+                role="alert"
+                aria-live="polite"
+                className="rounded-xl border border-red-400/30 bg-red-400/5 px-5 py-3.5 flex flex-col sm:flex-row sm:items-center gap-3"
+              >
+                <div className="flex items-start gap-3 flex-1 min-w-0">
+                  <AlertCircle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" aria-hidden />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground">
+                      {creditFails.length === 1
+                        ? "1 analysis couldn't run — not enough hours"
+                        : `${creditFails.length} analyses couldn't run — not enough hours`}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {needsUpgrade
+                        ? "Upgrade to a paid plan to continue."
+                        : creditFails.length === 1
+                          ? "Top up to unblock this analysis."
+                          : "Top up to unblock scheduled analyses."}
+                    </p>
+                  </div>
+                </div>
+                <Button size="sm" asChild className="shrink-0 self-stretch sm:self-auto">
+                  <Link href={needsUpgrade ? "/dashboard/usage?upgrade=1" : "/dashboard/usage"}>
+                    {needsUpgrade ? (
+                      <><Sparkles className="h-3.5 w-3.5 mr-1.5" aria-hidden />Upgrade</>
+                    ) : (
+                      <><TrendingUp className="h-3.5 w-3.5 mr-1.5" aria-hidden />Top up</>
+                    )}
+                  </Link>
+                </Button>
+              </div>
+            )}
+          </>
         );
       })()}
 

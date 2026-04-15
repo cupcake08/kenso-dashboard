@@ -26,6 +26,11 @@ export function useSubscription() {
   const remainingHours = data?.remaining_hours ?? 0;
   const hasCredits = (data?.pool_balance_minutes ?? 0) > 0;
 
+  // True when the customer hasn't yet paid for their first billing cycle —
+  // their only path to more hours is Upgrade (not Top-up). Paid customers in
+  // past_due/suspended still use Top-up to bring the account current.
+  const needsUpgrade = subState === "trialing" || subState === "trial_ended";
+
   return {
     data,
     isLoading,
@@ -37,6 +42,8 @@ export function useSubscription() {
     isTrialing,
     /** true when subscription is in trial_ended/past_due/suspended/cancelled */
     isBlocked,
+    /** true = customer's only path to more hours is Upgrade, not Top-up */
+    needsUpgrade,
     remainingHours,
     hasCredits,
     planName: isTrialing ? "Free Trial"

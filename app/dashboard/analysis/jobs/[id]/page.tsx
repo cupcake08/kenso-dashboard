@@ -340,10 +340,10 @@ export default function JobDetailPage() {
       </div>
 
       {job.failureReason && (
-        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4">
+        <div className="rounded-lg border border-red-400/30 bg-red-400/5 p-4">
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <div className="flex-1 min-w-0">
-              <p className="text-sm text-red-400">{friendlyFailureReason(job.failureReason, isTrial)}</p>
+              <p className="text-sm text-foreground">{friendlyFailureReason(job.failureReason, isTrial)}</p>
               {job.status === "refunded" && (
                 <p className="text-xs text-muted-foreground mt-1">Credits have been refunded to your account.</p>
               )}

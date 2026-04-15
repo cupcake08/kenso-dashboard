@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Zap, Loader2, CheckCircle2, X, Check, Cpu } from "lucide-react";
+import { Zap, Loader2, CheckCircle2, X, Check, Cpu, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { apiFetch, estimateCredits, createJob, normalizeDevice } from "@/lib/api";
@@ -391,8 +391,10 @@ export function AnalysisModal({ open, onClose, onJobCreated, balance, subscripti
       toast.success("Analysis started — we'll notify you when it's ready");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to create job";
-      if (msg.includes("insufficient credits")) {
-        toast.error("Not enough hours remaining. Top up to run analysis.");
+      if (msg.includes("insufficient credits") || msg.includes("credit reserve")) {
+        toast.error(isTrial
+          ? "Not enough hours remaining. Upgrade to run analysis."
+          : "Not enough hours remaining. Top up to run analysis.");
       }
       setSubmitError(msg);
     } finally {
@@ -587,21 +589,30 @@ export function AnalysisModal({ open, onClose, onJobCreated, balance, subscripti
                   </div>
                 ) : (
                   <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-3 mb-4">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Audio</span>
-                      <span className="text-foreground tabular-nums">{estimate.estimatedDurationMin.toFixed(0)} min</span>
-                    </div>
+                    {(() => {
+                      const totalH = estimate.estimatedDurationMin / 60;
+                      const audioLabel = totalH >= 1
+                        ? `${totalH.toFixed(1)}h`
+                        : `${Math.round(estimate.estimatedDurationMin)}m`;
+                      return (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Total audio</span>
+                          <span className="text-foreground tabular-nums">{audioLabel}</span>
+                        </div>
+                      );
+                    })()}
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Devices</span>
                       <span className="text-foreground tabular-nums">{selectedMics.length}</span>
                     </div>
                     {/* Per-mic breakdown — only shown when 2+ mics, to clarify why
-                        the estimate can exceed the nominal time window. */}
+                        the estimate can exceed the nominal time window. Capped
+                        height so a many-mic shop doesn't push the CTA offscreen. */}
                     {estimate.perMicDurations && estimate.perMicDurations.length >= 2 && (
-                      <div className="rounded-lg bg-muted/30 px-3 py-2 space-y-1">
+                      <div className="rounded-lg bg-muted/50 px-3 py-2 space-y-1 max-h-28 overflow-y-auto">
                         {estimate.perMicDurations.map((m) => {
                           const device = devices.find((d) => d.device_id === m.micId);
-                          const label = device?.label || m.micId;
+                          const label = device?.label || "Device";
                           const hours = m.durationMs / 3600000;
                           return (
                             <div key={m.micId} className="flex justify-between text-xs">
@@ -615,41 +626,86 @@ export function AnalysisModal({ open, onClose, onJobCreated, balance, subscripti
                       </div>
                     )}
                     <div className="h-px bg-border" />
-                    <div className="flex justify-between items-center text-sm font-medium">
-                      <span className="text-foreground">Estimated cost</span>
-                      <div className="text-right">
-                        <span className="text-primary text-lg tabular-nums font-semibold">
-                          {estimate.estimatedHours.toFixed(1)}h
-                        </span>
-                        <span className="text-muted-foreground text-xs ml-1">
-                          (~₹{Math.round(estimate.estimatedCostInr)})
-                        </span>
-                      </div>
-                    </div>
+                    {(() => {
+                      const hoursLabel = estimate.estimatedHours.toFixed(1);
+                      const withinPlan = balance !== undefined && balance >= estimate.estimatedCredits;
+                      return (
+                        <div className="flex justify-between items-center text-sm font-medium">
+                          <span className="text-foreground">Hours needed</span>
+                          <div className="text-right">
+                            <span className="text-primary text-lg tabular-nums font-semibold">
+                              {hoursLabel}h
+                            </span>
+                            <span className="text-muted-foreground text-xs ml-1.5">
+                              {withinPlan
+                                ? "Included in your plan"
+                                : `·  ₹${Math.round(estimate.estimatedCostInr)} at overage rate`}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
                 {estimate.hasAudio && balance !== undefined && balance < estimate.estimatedCredits && (
-                  <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3 text-sm text-destructive mb-3">
-                    Not enough hours remaining ({(balance / 60).toFixed(1)}h available, {estimate.estimatedHours.toFixed(1)}h needed).{" "}
-                    {isTrial ? (
-                      <button
-                        type="button"
-                        onClick={() => { onClose(); onUpgrade?.(); }}
-                        className="underline font-medium"
-                      >
-                        Upgrade to continue
-                      </button>
-                    ) : (
-                      <Link href="/dashboard/usage" className="underline">Top up</Link>
-                    )}
+                  <div className="rounded-lg bg-red-400/5 border border-red-400/30 p-3 mb-3">
+                    <div className="flex items-start gap-2.5">
+                      <AlertCircle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" aria-hidden />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-red-400">
+                          Not enough hours remaining
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {(balance / 60).toFixed(1)}h available, {estimate.estimatedHours.toFixed(1)}h needed
+                        </p>
+                      </div>
+                      {isTrial ? (
+                        <Button
+                          size="sm"
+                          onClick={() => { onClose(); onUpgrade?.(); }}
+                          className="shrink-0"
+                        >
+                          Upgrade
+                        </Button>
+                      ) : (
+                        <Button size="sm" asChild className="shrink-0">
+                          <Link href="/dashboard/usage">Top up</Link>
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 )}
                 {estimate.hasAudio && balance !== undefined &&
                  balance >= estimate.estimatedCredits &&
                  balance < estimate.estimatedCredits * 1.1 && (
-                  <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 p-3 text-xs text-amber-500 mb-3">
-                    Balance is tight — this job will use most of your remaining hours.
-                    Another pending analysis or scheduled job could cause this one to fail with insufficient credits.
+                  <div className="rounded-lg bg-amber-400/5 border border-amber-400/30 p-3 mb-3">
+                    <div className="flex items-start gap-2.5">
+                      <AlertCircle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" aria-hidden />
+                      <div className="flex-1 min-w-0" role="note">
+                        <p className="text-sm text-foreground">
+                          Only {((balance - estimate.estimatedCredits) / 60).toFixed(1)}h left after this
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {isTrial
+                            ? "Upgrade to keep future analyses running."
+                            : "Consider topping up so scheduled analyses don't fail."}
+                        </p>
+                      </div>
+                      {isTrial ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => { onClose(); onUpgrade?.(); }}
+                          className="shrink-0"
+                        >
+                          Upgrade
+                        </Button>
+                      ) : (
+                        <Button size="sm" variant="outline" asChild className="shrink-0">
+                          <Link href="/dashboard/usage">Top up</Link>
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 )}
                 {submitError && (
