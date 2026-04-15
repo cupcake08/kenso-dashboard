@@ -91,3 +91,82 @@ export async function revokeAPIKey(cid: string, hash: string, reason: string): P
     body: JSON.stringify({ reason }),
   });
 }
+
+/* ── Webhook admin types ── */
+
+export interface WebhookItem {
+  webhook_id: string;
+  url: string;
+  secret_prefix: string;
+  label: string;
+  enabled: boolean;
+  created_at_unix: number;
+  created_by: string;
+  consecutive_failures: number;
+}
+
+export interface CreateWebhookResponse {
+  webhook_id: string;
+  signing_secret: string;
+  secret_prefix: string;
+}
+
+export interface DeliveryItem {
+  delivery_id: string;
+  event_id: string;
+  event_type: string;
+  status: string;
+  attempts: number;
+  last_response_status?: number;
+  last_error?: string;
+  created_at_unix: number;
+  next_attempt_at_unix?: number;
+}
+
+/* ── Webhook admin functions ── */
+
+export async function listWebhooks(cid: string): Promise<WebhookItem[]> {
+  return adminFetch<WebhookItem[]>(`/v2/admin/companies/${cid}/webhooks`);
+}
+
+export async function createWebhook(cid: string, url: string, label: string): Promise<CreateWebhookResponse> {
+  return adminFetch<CreateWebhookResponse>(`/v2/admin/companies/${cid}/webhooks`, {
+    method: "POST",
+    body: JSON.stringify({ url, label }),
+  });
+}
+
+export async function updateWebhook(cid: string, webhookId: string, updates: { url?: string; label?: string; enabled?: boolean }): Promise<void> {
+  await adminFetch(`/v2/admin/companies/${cid}/webhooks/${webhookId}`, {
+    method: "PUT",
+    body: JSON.stringify(updates),
+  });
+}
+
+export async function deleteWebhook(cid: string, webhookId: string): Promise<void> {
+  await adminFetch(`/v2/admin/companies/${cid}/webhooks/${webhookId}`, { method: "DELETE" });
+}
+
+export async function rotateWebhookSecret(cid: string, webhookId: string): Promise<CreateWebhookResponse> {
+  return adminFetch<CreateWebhookResponse>(`/v2/admin/companies/${cid}/webhooks/${webhookId}/rotate-secret`, { method: "POST" });
+}
+
+export async function sendTestEvent(cid: string, webhookId: string): Promise<void> {
+  await adminFetch(`/v2/admin/companies/${cid}/webhooks/${webhookId}/test`, { method: "POST" });
+}
+
+export async function listDeliveries(cid: string, webhookId: string): Promise<DeliveryItem[]> {
+  return adminFetch<DeliveryItem[]>(`/v2/admin/companies/${cid}/webhooks/${webhookId}/deliveries`);
+}
+
+export async function getDelivery(deliveryId: string): Promise<Record<string, unknown>> {
+  return adminFetch<Record<string, unknown>>(`/v2/admin/webhook-deliveries/${deliveryId}`);
+}
+
+export async function retryDelivery(deliveryId: string): Promise<void> {
+  await adminFetch(`/v2/admin/webhook-deliveries/${deliveryId}/retry`, { method: "POST" });
+}
+
+export async function listAuditLog(cid: string): Promise<unknown[]> {
+  return adminFetch<unknown[]>(`/v2/admin/companies/${cid}/api-audit-log`);
+}
