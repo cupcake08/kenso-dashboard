@@ -1,5 +1,6 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { TrendingUp, RefreshCw, X, Clock, ArrowUpRight, ArrowDownRight, Receipt, CheckCircle2, AlertCircle, Layers, Sparkles, Mail } from "lucide-react";
 import { toast } from "sonner";
@@ -118,8 +119,23 @@ const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 const UPGRADE_CONTACT_EMAIL = "admin@knownsense.ai";
 
 export default function UsagePage() {
+  return (
+    <Suspense fallback={null}>
+      <UsagePageInner />
+    </Suspense>
+  );
+}
+
+function UsagePageInner() {
   const [showTopup, setShowTopup] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
+  // Auto-open the upgrade modal when arriving with ?upgrade=1 — used from the
+  // insufficient-credits CTA in the Analysis modal to bounce trialing
+  // customers through a single upgrade path.
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    if (searchParams?.get("upgrade") === "1") setShowUpgrade(true);
+  }, [searchParams]);
   const [selectedHours, setSelectedHours] = useState(25);
   const [topupStatus, setTopupStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
 

@@ -1,10 +1,12 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Loader2, ArrowLeft, BarChart3, XCircle } from "lucide-react";
+import { Loader2, ArrowLeft, BarChart3, XCircle, Sparkles, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
-import { getJob, cancelJob } from "@/lib/api";
+import { getJob, cancelJob, apiFetch, normalizeCredits } from "@/lib/api";
 import type { AnalysisJob, AnalysisResult, AnalysisResultV2 } from "@/types/analysis";
+import type { RawCreditsResponse } from "@/types/api";
+import { useApi } from "@/hooks/use-api";
 import { BadgeVariant } from "@/components/ui/badge-variant";
 import { Button } from "@/components/ui/button";
 import { ReportShell } from "@/components/analysis-report/report-shell";
@@ -89,13 +91,15 @@ const STATUS_COLORS: Record<string, string> = {
   refunded: "slate",
 };
 
-function friendlyFailureReason(reason: string): string {
+function friendlyFailureReason(reason: string, isTrial: boolean): string {
   if (reason.includes("MAX_TOKENS") || reason.includes("truncated"))
     return "The analysis produced too much output. Try selecting a shorter time range (under 30 minutes).";
   if (reason.includes("no_audio_in_range"))
     return "No audio recordings found in the selected time range. The device may have been offline.";
   if (reason.includes("insufficient credits") || reason.includes("credit reserve"))
-    return "Not enough credits to run this analysis. Please top up your balance.";
+    return isTrial
+      ? "Not enough hours remaining to run this analysis. Upgrade to a paid plan to continue."
+      : "Not enough hours remaining to run this analysis. Top up to continue.";
   if (reason.includes("timeout") || reason.includes("stuck in"))
     return "The analysis timed out. This can happen with very large audio files. Please try again.";
   if (reason.includes("all chunks failed"))
@@ -105,6 +109,10 @@ function friendlyFailureReason(reason: string): string {
   if (reason.includes("temporarily unavailable"))
     return "Our AI provider is temporarily unavailable. Your job has been queued and will retry automatically.";
   return "Something went wrong during analysis. Please try again, or contact support if this persists.";
+}
+
+function isInsufficientCreditsReason(reason: string): boolean {
+  return reason.includes("insufficient credits") || reason.includes("credit reserve");
 }
 
 function formatDateTime(iso: string): string {
@@ -130,6 +138,15 @@ export default function JobDetailPage() {
   const [cancelling, setCancelling] = useState(false);
   const [cancelSecondsLeft, setCancelSecondsLeft] = useState(0);
   const [selectedMicId, setSelectedMicId] = useState<string>("");
+
+  // Subscription state — used to branch the failure-reason CTA between
+  // Top-up (active) and Upgrade (trialing). Same SWR key as /usage so we
+  // don't double-fetch when the user navigates between the two.
+  const { data: credits } = useApi<ReturnType<typeof normalizeCredits>>(
+    IS_DEMO ? null : "/credits",
+    async (url) => normalizeCredits(await apiFetch<RawCreditsResponse>(url)),
+  );
+  const isTrial = credits?.subscriptionState === "trialing" || credits?.subscriptionState === "trial_ended";
 
   // Cancel countdown timer (60s window)
   useEffect(() => {
@@ -324,10 +341,27 @@ export default function JobDetailPage() {
 
       {job.failureReason && (
         <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4">
-          <p className="text-sm text-red-400">{friendlyFailureReason(job.failureReason)}</p>
-          {job.status === "refunded" && (
-            <p className="text-xs text-muted-foreground mt-1">Credits have been refunded to your account.</p>
-          )}
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-red-400">{friendlyFailureReason(job.failureReason, isTrial)}</p>
+              {job.status === "refunded" && (
+                <p className="text-xs text-muted-foreground mt-1">Credits have been refunded to your account.</p>
+              )}
+            </div>
+            {isInsufficientCreditsReason(job.failureReason) && (
+              <Button
+                size="sm"
+                onClick={() => router.push(isTrial ? "/dashboard/usage?upgrade=1" : "/dashboard/usage")}
+                className="shrink-0"
+              >
+                {isTrial ? (
+                  <><Sparkles className="h-3.5 w-3.5 mr-1.5" />Upgrade</>
+                ) : (
+                  <><TrendingUp className="h-3.5 w-3.5 mr-1.5" />Top up</>
+                )}
+              </Button>
+            )}
+          </div>
         </div>
       )}
 

@@ -435,6 +435,12 @@ export async function estimateCredits(body: {
     hasAudio: raw.has_audio,
     estimatedHours: raw.estimated_hours ?? raw.estimated_credits / 60,
     estimatedCostInr: raw.estimated_cost_inr ?? Math.round(raw.estimated_credits / 60 * 40),
+    ...(raw.per_mic_durations && {
+      perMicDurations: raw.per_mic_durations.map((m) => ({
+        micId: m.mic_id,
+        durationMs: m.duration_ms,
+      })),
+    }),
   };
 }
 

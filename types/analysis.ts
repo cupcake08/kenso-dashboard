@@ -156,6 +156,7 @@ export interface RawEstimateResponse {
   has_audio: boolean;
   estimated_hours?: number;
   estimated_cost_inr?: number;
+  per_mic_durations?: { mic_id: string; duration_ms: number }[];
 }
 
 export interface RawAnalysisSchedule {
@@ -291,6 +292,7 @@ export interface EstimateResult {
   hasAudio: boolean;
   estimatedHours: number;
   estimatedCostInr: number;
+  perMicDurations?: { micId: string; durationMs: number }[];
 }
 
 // --- Operating Hours ---

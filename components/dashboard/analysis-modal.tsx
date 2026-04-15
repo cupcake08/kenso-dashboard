@@ -239,9 +239,17 @@ interface Props {
   onJobCreated: (job: AnalysisJob) => void;
   /** Current credit balance in minutes (used to show insufficient-credits warning) */
   balance?: number;
+  /** Subscription state — controls whether the insufficient-credits CTA points at
+   * Top-up (active) or Upgrade (trialing / trial_ended). */
+  subscriptionState?: string;
+  /** Opens the parent Upgrade modal. Called when a trialing customer hits the
+   * "not enough hours" CTA — sends them to the upgrade flow instead of the
+   * usage page (which has no Top-up button during trial). */
+  onUpgrade?: () => void;
 }
 
-export function AnalysisModal({ open, onClose, onJobCreated, balance }: Props) {
+export function AnalysisModal({ open, onClose, onJobCreated, balance, subscriptionState, onUpgrade }: Props) {
+  const isTrial = subscriptionState === "trialing" || subscriptionState === "trial_ended";
   const [step, setStep] = useState(0);
   const [selectedMics, setSelectedMics] = useState<string[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
@@ -587,6 +595,25 @@ export function AnalysisModal({ open, onClose, onJobCreated, balance }: Props) {
                       <span className="text-muted-foreground">Devices</span>
                       <span className="text-foreground tabular-nums">{selectedMics.length}</span>
                     </div>
+                    {/* Per-mic breakdown — only shown when 2+ mics, to clarify why
+                        the estimate can exceed the nominal time window. */}
+                    {estimate.perMicDurations && estimate.perMicDurations.length >= 2 && (
+                      <div className="rounded-lg bg-muted/30 px-3 py-2 space-y-1">
+                        {estimate.perMicDurations.map((m) => {
+                          const device = devices.find((d) => d.device_id === m.micId);
+                          const label = device?.label || m.micId;
+                          const hours = m.durationMs / 3600000;
+                          return (
+                            <div key={m.micId} className="flex justify-between text-xs">
+                              <span className="text-muted-foreground truncate mr-2">{label}</span>
+                              <span className="text-foreground tabular-nums shrink-0">
+                                {hours >= 1 ? `${hours.toFixed(1)}h` : `${Math.round(m.durationMs / 60000)}m`}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                     <div className="h-px bg-border" />
                     <div className="flex justify-between items-center text-sm font-medium">
                       <span className="text-foreground">Estimated cost</span>
@@ -604,7 +631,25 @@ export function AnalysisModal({ open, onClose, onJobCreated, balance }: Props) {
                 {estimate.hasAudio && balance !== undefined && balance < estimate.estimatedCredits && (
                   <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3 text-sm text-destructive mb-3">
                     Not enough hours remaining ({(balance / 60).toFixed(1)}h available, {estimate.estimatedHours.toFixed(1)}h needed).{" "}
-                    <Link href="/dashboard/usage" className="underline">Top up</Link>
+                    {isTrial ? (
+                      <button
+                        type="button"
+                        onClick={() => { onClose(); onUpgrade?.(); }}
+                        className="underline font-medium"
+                      >
+                        Upgrade to continue
+                      </button>
+                    ) : (
+                      <Link href="/dashboard/usage" className="underline">Top up</Link>
+                    )}
+                  </div>
+                )}
+                {estimate.hasAudio && balance !== undefined &&
+                 balance >= estimate.estimatedCredits &&
+                 balance < estimate.estimatedCredits * 1.1 && (
+                  <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 p-3 text-xs text-amber-500 mb-3">
+                    Balance is tight — this job will use most of your remaining hours.
+                    Another pending analysis or scheduled job could cause this one to fail with insufficient credits.
                   </div>
                 )}
                 {submitError && (

@@ -145,10 +145,47 @@ export default function AnalysisPage() {
             )}
           </div>
           <Button variant="outline" size="sm" asChild>
-            <Link href="/dashboard/usage">Top Up</Link>
+            <Link href="/dashboard/usage?upgrade=1">Upgrade</Link>
           </Button>
         </div>
       )}
+
+      {/* Failed-due-to-credits callout. If any recent job failed because the
+          customer ran out of hours, surface it prominently with a direct
+          upgrade/top-up path — don't rely on them scrolling to the list. */}
+      {(() => {
+        const creditFails = jobs.filter(
+          (j) => (j.status === "failed" || j.status === "refunded") &&
+                 j.failureReason &&
+                 (j.failureReason.includes("insufficient credits") ||
+                  j.failureReason.includes("credit reserve")),
+        );
+        if (creditFails.length === 0) return null;
+        return (
+          <div className="flex items-start gap-3 rounded-xl border border-red-400/30 bg-red-400/5 px-5 py-3.5">
+            <BarChart3 className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-foreground">
+                {creditFails.length === 1
+                  ? "1 analysis couldn't run — not enough hours"
+                  : `${creditFails.length} analyses couldn't run — not enough hours`}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {subState === "trialing" || subState === "trial_ended"
+                  ? "Upgrade to a paid plan to continue."
+                  : "Top up your balance to unblock scheduled analyses."}
+              </p>
+            </div>
+            <Button size="sm" asChild className="shrink-0">
+              <Link href={subState === "trialing" || subState === "trial_ended"
+                ? "/dashboard/usage?upgrade=1"
+                : "/dashboard/usage"}>
+                {subState === "trialing" || subState === "trial_ended" ? "Upgrade" : "Top up"}
+              </Link>
+            </Button>
+          </div>
+        );
+      })()}
 
       {/* Listen-tier upgrade prompt (only when we know the tier, not on loading/error) */}
       {hasAnalysis === false && !IS_DEMO && (
@@ -265,6 +302,8 @@ export default function AnalysisPage() {
         onClose={() => setModalOpen(false)}
         onJobCreated={handleJobCreated}
         balance={credits}
+        subscriptionState={subState}
+        onUpgrade={() => router.push("/dashboard/usage?upgrade=1")}
       />
     </div>
   );
