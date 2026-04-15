@@ -1,17 +1,36 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { auth } from "@/lib/firebase";
 import { apiFetch, normalizeDevice, generateAPIKey, rotateAPIKey } from "@/lib/api";
 import type { Device, PlanResponse, RawDevice, RawPlanResponse, UsageResponse } from "@/types/api";
 import { useApi } from "@/hooks/use-api";
+import { useBusinessType } from "@/hooks/use-business-type";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, Copy, RefreshCw, Key, User, CreditCard, Cpu, Check, AlertCircle, LogOut } from "lucide-react";
+import { Loader2, Copy, RefreshCw, Key, User, CreditCard, Cpu, Check, AlertCircle, LogOut, Building2, ChevronRight } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import type { User as FirebaseUser } from "firebase/auth";
+
+const VERTICAL_LABELS: Record<string, string> = {
+  restaurant: "Restaurant",
+  retail: "Retail",
+  ticketing: "Ticketing",
+  service: "Service",
+  generic: "Generic",
+};
+
+function businessTypeSourceLabel(source: string, setAtUnix?: number): string {
+  const dateStr = setAtUnix
+    ? new Date(setAtUnix * 1000).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+    : "";
+  if (source === "admin") return dateStr ? `Set by you on ${dateStr}` : "Set by you";
+  if (source === "ai_confirmed") return dateStr ? `AI-confirmed on ${dateStr}` : "AI-confirmed";
+  return "Not set";
+}
 
 const DEMO_PLAN: PlanResponse = { plan: "Analyze Pro", billing_cycle: "prepaid", price_per_month: 99900 };
 const DEMO_USAGE_PLAN: Partial<UsageResponse> = {
@@ -44,6 +63,9 @@ export default function SettingsPage() {
   const [apiKeyCopied, setApiKeyCopied] = useState(false);
   const [apiKeyLoading, setApiKeyLoading] = useState(false);
   const [savedOk, setSavedOk] = useState<string | null>(null);
+
+  // SWR: business type
+  const { state: btState } = useBusinessType();
 
   // SWR: plan info (legacy format)
   const { data: plan = null } = useApi<PlanResponse | null>(
@@ -202,6 +224,42 @@ export default function SettingsPage() {
           )}
         </motion.div>
       </div>
+
+      {/* Business Type */}
+      <motion.div {...fadeUp} transition={{ ...fadeUp.transition, delay: 0.075 }}>
+        <Link
+          href="/dashboard/settings/business-type"
+          className="block rounded-xl border border-border bg-card/50 p-5 hover:border-primary/30 hover:bg-primary/5 transition-colors group"
+        >
+          <div className="flex items-center gap-2 mb-3">
+            <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+            <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">Business Type</p>
+            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/40 ml-auto group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
+          </div>
+          <div className="flex items-end justify-between gap-4 flex-wrap">
+            <div className="min-w-0">
+              <p className="text-lg font-semibold text-foreground leading-tight">
+                {btState?.businessType && VERTICAL_LABELS[btState.businessType]
+                  ? VERTICAL_LABELS[btState.businessType]
+                  : <span className="text-muted-foreground italic font-normal">Not set</span>}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {businessTypeSourceLabel(btState?.source ?? "", btState?.setAtUnix)}
+              </p>
+              {btState?.description && (
+                <p className="text-xs text-muted-foreground/70 mt-2 line-clamp-2 italic">
+                  &ldquo;{btState.description}&rdquo;
+                </p>
+              )}
+              {!btState?.businessType && (
+                <p className="text-xs text-muted-foreground/70 mt-2 leading-relaxed max-w-md">
+                  Setting this tunes AI analysis for your vertical (restaurant, retail, etc.) — better summaries, sharper metrics.
+                </p>
+              )}
+            </div>
+          </div>
+        </Link>
+      </motion.div>
 
       {/* Device Labels */}
       {devices.length > 0 && (
