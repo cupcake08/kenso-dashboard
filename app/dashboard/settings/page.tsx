@@ -229,35 +229,38 @@ export default function SettingsPage() {
       <motion.div {...fadeUp} transition={{ ...fadeUp.transition, delay: 0.075 }}>
         <Link
           href="/dashboard/settings/business-type"
-          className="block rounded-xl border border-border bg-card/50 p-5 hover:border-primary/30 hover:bg-primary/5 transition-colors group"
+          className="block rounded-xl border border-border bg-card/50 p-5 hover:border-primary/30 hover:bg-primary/5 transition-colors duration-200 group"
         >
-          <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center gap-2 mb-4">
             <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
             <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">Business Type</p>
-            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/40 ml-auto group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
+            <ChevronRight className="h-4 w-4 text-muted-foreground/30 ml-auto group-hover:text-primary group-hover:translate-x-0.5 transition-all duration-200" />
           </div>
-          <div className="flex items-end justify-between gap-4 flex-wrap">
+
+          {btState?.businessType && VERTICAL_LABELS[btState.businessType] ? (
             <div className="min-w-0">
-              <p className="text-lg font-semibold text-foreground leading-tight">
-                {btState?.businessType && VERTICAL_LABELS[btState.businessType]
-                  ? VERTICAL_LABELS[btState.businessType]
-                  : <span className="text-muted-foreground italic font-normal">Not set</span>}
+              <p className="font-display text-2xl font-semibold text-foreground tracking-tight leading-[1.1]">
+                {VERTICAL_LABELS[btState.businessType]}
               </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                {businessTypeSourceLabel(btState?.source ?? "", btState?.setAtUnix)}
+              <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+                {businessTypeSourceLabel(btState.source, btState.setAtUnix)}
               </p>
-              {btState?.description && (
-                <p className="text-xs text-muted-foreground/70 mt-2 line-clamp-2 italic">
+              {btState.description && (
+                <p className="text-[0.8125rem] text-foreground/60 mt-3 line-clamp-2 italic leading-relaxed max-w-prose">
                   &ldquo;{btState.description}&rdquo;
                 </p>
               )}
-              {!btState?.businessType && (
-                <p className="text-xs text-muted-foreground/70 mt-2 leading-relaxed max-w-md">
-                  Setting this tunes AI analysis for your vertical (restaurant, retail, etc.) — better summaries, sharper metrics.
-                </p>
-              )}
             </div>
-          </div>
+          ) : (
+            <div className="min-w-0">
+              <p className="font-display text-2xl font-semibold text-foreground tracking-tight leading-[1.1]">
+                Set your business type
+              </p>
+              <p className="text-[0.8125rem] text-muted-foreground mt-2 leading-relaxed max-w-prose">
+                Picking a vertical tunes AI analysis for restaurants, retail, or service — sharper metrics, more relevant summaries.
+              </p>
+            </div>
+          )}
         </Link>
       </motion.div>
 
