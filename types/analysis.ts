@@ -180,6 +180,7 @@ export interface RawAnalysisSchedule {
   last_job_id?: string;
   paused_until?: string;
   pause_reason?: string;
+  consecutive_credit_failures?: number;
   run_count: number;
   created_at: string;
   updated_at: string;
@@ -280,6 +281,10 @@ export interface AnalysisSchedule {
   lastJobId?: string;
   pausedUntil?: string;
   pauseReason?: string;
+  /** Backend tracks consecutive insufficient-credit failures here.
+   * When it hits the auto-pause threshold (3) the schedule self-pauses
+   * with a paused_until far in the future. Reset on first successful run. */
+  consecutiveCreditFailures?: number;
   runCount: number;
   createdAt: string;
   updatedAt?: string;

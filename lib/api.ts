@@ -373,6 +373,7 @@ export function normalizeSchedule(raw: RawAnalysisSchedule): AnalysisSchedule {
     lastJobId: raw.last_job_id,
     pausedUntil: raw.paused_until,
     pauseReason: raw.pause_reason,
+    consecutiveCreditFailures: raw.consecutive_credit_failures ?? 0,
     runCount: raw.run_count,
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,

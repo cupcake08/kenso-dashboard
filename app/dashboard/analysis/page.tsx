@@ -7,6 +7,7 @@ import { BarChart3, Plus, Loader2, ChevronRight, Gift, CalendarClock, Lock, Aler
 import { listJobs, listSchedules, apiFetch, normalizeCredits } from "@/lib/api";
 import type { AnalysisJob, AnalysisSchedule } from "@/types/analysis";
 import { cronToDaysLabel } from "@/lib/cron";
+import { cn } from "@/lib/utils";
 import type { RawCreditsResponse } from "@/types/api";
 import { useApi } from "@/hooks/use-api";
 import { useSubscription } from "@/hooks/use-subscription";
@@ -88,6 +89,10 @@ export default function AnalysisPage() {
   const subState = creditsData?.subscriptionState ?? "";
   const trialEndsAt = creditsData?.trialEndsAt ?? "";
   const loading = subLoading;
+  // Customer's only path to more hours is Upgrade (trial states) vs Top up
+  // (active states with low balance). Used in failed-jobs callout, schedules
+  // auto-pause callout, and trial banner CTA.
+  const needsUpgrade = subState === "trialing" || subState === "trial_ended";
 
   function openModal() {
     setModalOpen(true);
@@ -151,7 +156,6 @@ export default function AnalysisPage() {
                  (j.failureReason.includes("insufficient credits") ||
                   j.failureReason.includes("credit reserve")),
         );
-        const needsUpgrade = subState === "trialing" || subState === "trial_ended";
         const showFailsCallout = creditFails.length > 0;
 
         return (
@@ -264,33 +268,55 @@ export default function AnalysisPage() {
             <div className="rounded-xl border border-border bg-card/30 divide-y divide-border/50 overflow-hidden">
               {visible.map((s) => {
                 const isPaused = s.pausedUntil && new Date(s.pausedUntil).getTime() > Date.now();
+                // Backend auto-pauses with reason "Auto-paused: N consecutive
+                // runs failed due to insufficient credits". Detect that here
+                // so we can show a more helpful subline + Upgrade/Top-up CTA.
+                const isAutoPausedForCredits = isPaused &&
+                  (s.pauseReason || "").toLowerCase().includes("insufficient credits");
                 const cadence = s.scheduleType === "recurring"
                   ? cronToDaysLabel(s.recurrenceRule)
                   : "One time";
                 const time = s.analysisStartTime || "";
-                // Primary identifier: cadence + time. Template name is omitted —
-                // the AI vertical drives the analysis content, so the template
-                // string isn't a meaningful business label.
                 const primaryParts = [cadence, time].filter(Boolean);
                 const primary = primaryParts.join(" · ");
                 return (
                   <Link
                     key={s.scheduleId}
                     href={`/dashboard/analysis/schedules?id=${s.scheduleId}`}
-                    className="flex items-center gap-3 px-4 py-3 hover:bg-muted/10 transition-colors"
+                    className={cn(
+                      "flex items-center gap-3 px-4 py-3 transition-colors",
+                      isAutoPausedForCredits ? "bg-red-400/5 hover:bg-red-400/10" : "hover:bg-muted/10",
+                    )}
                   >
-                    <CalendarClock className="h-4 w-4 text-muted-foreground/60 shrink-0" aria-hidden />
+                    {isAutoPausedForCredits ? (
+                      <AlertCircle className="h-4 w-4 text-red-400 shrink-0" aria-hidden />
+                    ) : (
+                      <CalendarClock className="h-4 w-4 text-muted-foreground/60 shrink-0" aria-hidden />
+                    )}
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-foreground truncate">{primary}</p>
                       <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                        {s.micIds.length > 0 ? `${s.micIds.length} ${s.micIds.length === 1 ? "device" : "devices"}` : "All shop devices"}
-                        {s.analysisWindowHours > 0 && (
-                          <><span className="mx-1.5 text-muted-foreground/40">·</span>{s.analysisWindowHours}h window</>
+                        {isAutoPausedForCredits ? (
+                          <span className="text-red-400">
+                            Auto-paused — not enough hours.
+                            {needsUpgrade ? " Upgrade to resume." : " Top up to resume."}
+                          </span>
+                        ) : (
+                          <>
+                            {s.micIds.length > 0 ? `${s.micIds.length} ${s.micIds.length === 1 ? "device" : "devices"}` : "All shop devices"}
+                            {s.analysisWindowHours > 0 && (
+                              <><span className="mx-1.5 text-muted-foreground/40">·</span>{s.analysisWindowHours}h window</>
+                            )}
+                          </>
                         )}
                       </p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      {isPaused ? (
+                      {isAutoPausedForCredits ? (
+                        <span className="text-[0.6875rem] font-medium px-2 py-0.5 rounded-full bg-red-400/10 text-red-400 border border-red-400/20">
+                          Auto-paused
+                        </span>
+                      ) : isPaused ? (
                         <BadgeVariant variant="amber" className="text-xs">Paused</BadgeVariant>
                       ) : !s.enabled ? (
                         <BadgeVariant variant="slate" className="text-xs">Off</BadgeVariant>
