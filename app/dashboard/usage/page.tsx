@@ -119,11 +119,21 @@ export default function UsagePage() {
   const [selectedHours, setSelectedHours] = useState(25);
   const [topupStatus, setTopupStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
 
+  // Usage + credits revalidate when the tab regains focus — admin approvals
+  // happen in a separate session, so customers need a way to see fresh values
+  // without a hard reload. `dedupingInterval: 5000` prevents focus spam from
+  // firing redundant fetches.
+  const billingSwrConfig = {
+    revalidateOnFocus: true,
+    revalidateOnReconnect: true,
+    dedupingInterval: 5000,
+  };
+
   // Usage breakdown from new endpoint
   const { data: usage, isLoading: usageLoading, error: usageError, mutate: mutateUsage } = useApi<UsageResponse>(
     isDemoMode ? null : "/usage",
     undefined,
-    { fallbackData: isDemoMode ? DEMO_USAGE : undefined },
+    { fallbackData: isDemoMode ? DEMO_USAGE : undefined, ...billingSwrConfig },
   );
 
   // Credits — balance + transaction history
@@ -133,8 +143,18 @@ export default function UsagePage() {
       const raw = await apiFetch<RawCreditsResponse>(url);
       return normalizeCredits(raw);
     },
-    { fallbackData: isDemoMode ? DEMO_CREDITS : undefined },
+    { fallbackData: isDemoMode ? DEMO_CREDITS : undefined, ...billingSwrConfig },
   );
+
+  const [refreshing, setRefreshing] = useState(false);
+  async function handleRefresh() {
+    setRefreshing(true);
+    try {
+      await Promise.all([mutateUsage(), mutateCredits()]);
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   const transactions = credits?.transactions ?? [];
   const loading = usageLoading || creditsLoading;
@@ -207,9 +227,21 @@ export default function UsagePage() {
   return (
     <div className="max-w-3xl space-y-8">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">Usage</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Hours and billing for your organization</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Usage</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Hours and billing for your organization</p>
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleRefresh}
+          disabled={refreshing}
+          className="text-muted-foreground hover:text-foreground"
+          aria-label="Refresh usage data"
+        >
+          <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+        </Button>
       </div>
 
       {/* Hero: remaining hours */}
