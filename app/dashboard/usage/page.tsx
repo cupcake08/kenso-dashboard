@@ -114,9 +114,8 @@ function TransactionItem({ txn }: { txn: Transaction }) {
 
 const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
-// Contact channel for upgrade requests. Update when a real support address
-// is set up.
-const UPGRADE_CONTACT_EMAIL = "support@knownsense.ai";
+// Contact channel for upgrade requests.
+const UPGRADE_CONTACT_EMAIL = "admin@knownsense.ai";
 
 export default function UsagePage() {
   const [showTopup, setShowTopup] = useState(false);
