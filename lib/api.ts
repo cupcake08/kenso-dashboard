@@ -263,6 +263,7 @@ export function normalizeJob(raw: RawAnalysisJob): AnalysisJob {
     templateId: raw.template_id,
     templateName: raw.template_name,
     micIds: raw.mic_ids,
+    micNames: raw.mic_names,
     timeRangeStart: unixToISO(raw.time_range_start_unix),
     timeRangeEnd: unixToISO(raw.time_range_end_unix),
     status: raw.status,
@@ -623,4 +624,33 @@ export async function getAnalysisJobDebug(
     `/v2/admin/analysis-jobs/${encodeURIComponent(jobId)}/debug`,
     { headers: { "X-Admin-API-Key": adminApiKey } },
   );
+}
+
+export type RetryJobResponse = {
+  original_job_id: string;
+  new_job_id: string;
+  status: string;
+  created_at_unix: number;
+};
+
+/**
+ * Retry a failed/refunded analysis job. Admin-only.
+ */
+export async function retryAnalysisJob(
+  jobId: string,
+  adminApiKey: string,
+): Promise<RetryJobResponse> {
+  const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
+  const res = await fetch(
+    `${API_BASE}/v2/admin/analysis-jobs/${encodeURIComponent(jobId)}/retry`,
+    {
+      method: "POST",
+      headers: { "X-Admin-API-Key": adminApiKey, "Content-Type": "application/json" },
+    },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || `Retry failed (${res.status})`);
+  }
+  return res.json();
 }

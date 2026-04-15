@@ -1,9 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Loader2, ArrowLeft, BarChart3, XCircle, Sparkles, TrendingUp } from "lucide-react";
+import { Loader2, ArrowLeft, BarChart3, XCircle, Sparkles, TrendingUp, RotateCcw, Mail } from "lucide-react";
 import { toast } from "sonner";
-import { getJob, cancelJob, apiFetch, normalizeCredits } from "@/lib/api";
+import { getJob, cancelJob, apiFetch, normalizeCredits, getAnalysisJobDebug, retryAnalysisJob } from "@/lib/api";
 import type { AnalysisJob, AnalysisResult, AnalysisResultV2 } from "@/types/analysis";
 import type { RawCreditsResponse } from "@/types/api";
 import { useApi } from "@/hooks/use-api";
@@ -138,6 +138,20 @@ export default function JobDetailPage() {
   const [cancelling, setCancelling] = useState(false);
   const [cancelSecondsLeft, setCancelSecondsLeft] = useState(0);
   const [selectedMicId, setSelectedMicId] = useState<string>("");
+  const [retrying, setRetrying] = useState(false);
+  const [sharing, setSharing] = useState(false);
+
+  // Admin key from localStorage (developer-only features)
+  const [adminKey, setAdminKey] = useState<string | null>(null);
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setAdminKey(localStorage.getItem("admin_api_key"));
+      // Listen for storage changes (e.g. admin gate sets the key)
+      const handler = () => setAdminKey(localStorage.getItem("admin_api_key"));
+      window.addEventListener("storage", handler);
+      return () => window.removeEventListener("storage", handler);
+    }
+  }, []);
 
   // Subscription state — used to branch the failure-reason CTA between
   // Top-up (active) and Upgrade (trialing). Same SWR key as /usage so we
@@ -253,6 +267,58 @@ export default function JobDetailPage() {
     }
   }
 
+  async function handleRetry() {
+    if (!job || !adminKey) return;
+    setRetrying(true);
+    try {
+      const result = await retryAnalysisJob(job.jobId, adminKey);
+      toast.success(`New job created: ${result.new_job_id}`);
+      router.push(`/dashboard/analysis/jobs/${result.new_job_id}`);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Retry failed");
+    } finally {
+      setRetrying(false);
+    }
+  }
+
+  async function handleShareReport() {
+    if (!job || !adminKey) return;
+    setSharing(true);
+    try {
+      const debug = await getAnalysisJobDebug(job.jobId, adminKey);
+      const subject = encodeURIComponent(`Analysis Job Failed: ${job.jobId}`);
+      const body = encodeURIComponent(
+        `Job ID: ${job.jobId}\n` +
+        `Company: ${job.companyId}\n` +
+        `Status: ${job.status}\n` +
+        `Template: ${job.templateName} (${job.templateId})\n` +
+        `Failure Reason: ${job.failureReason || "N/A"}\n` +
+        `Model: ${debug.model_name}\n` +
+        `Duration: ${debug.duration_ms}ms\n` +
+        `Token Usage: ${JSON.stringify(debug.token_usage, null, 2)}\n` +
+        `Prompt Version: ${debug.prompt_version}\n` +
+        `Time Range: ${job.timeRangeStart} → ${job.timeRangeEnd}\n` +
+        `Mics: ${job.micIds.join(", ")}\n` +
+        `Created: ${job.createdAt}\n\n` +
+        `--- Raw Response (truncated) ---\n` +
+        `${(debug.raw_gemini_response || "").slice(0, 2000)}`,
+      );
+      window.open(`mailto:admin@knownsense.ai?subject=${subject}&body=${body}`);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to fetch debug info");
+    } finally {
+      setSharing(false);
+    }
+  }
+
+  // Helper: get display name for a mic ID
+  function micDisplayName(micId: string): string {
+    if (!job) return micId;
+    const idx = job.micIds.indexOf(micId);
+    if (idx >= 0 && job.micNames && job.micNames[idx]) return job.micNames[idx];
+    return micId;
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -355,19 +421,46 @@ export default function JobDetailPage() {
                 <p className="text-xs text-muted-foreground mt-1">Credits have been refunded to your account.</p>
               )}
             </div>
-            {isInsufficientCreditsReason(job.failureReason) && (
-              <Button
-                size="sm"
-                onClick={() => router.push(isTrial ? "/dashboard/usage?upgrade=1" : "/dashboard/usage")}
-                className="shrink-0"
-              >
-                {isTrial ? (
-                  <><Sparkles className="h-3.5 w-3.5 mr-1.5" />Upgrade</>
-                ) : (
-                  <><TrendingUp className="h-3.5 w-3.5 mr-1.5" />Top up</>
-                )}
-              </Button>
-            )}
+            <div className="flex items-center gap-2 flex-wrap">
+              {isInsufficientCreditsReason(job.failureReason) && (
+                <Button
+                  size="sm"
+                  onClick={() => router.push(isTrial ? "/dashboard/usage?upgrade=1" : "/dashboard/usage")}
+                  className="shrink-0"
+                >
+                  {isTrial ? (
+                    <><Sparkles className="h-3.5 w-3.5 mr-1.5" />Upgrade</>
+                  ) : (
+                    <><TrendingUp className="h-3.5 w-3.5 mr-1.5" />Top up</>
+                  )}
+                </Button>
+              )}
+              {/* Admin-only buttons — visible only when admin API key is in localStorage */}
+              {adminKey && (job.status === "failed" || job.status === "refunded") && (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRetry}
+                    disabled={retrying}
+                    className="text-xs"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
+                    {retrying ? "Retrying..." : "Retry"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleShareReport}
+                    disabled={sharing}
+                    className="text-xs"
+                  >
+                    <Mail className="h-3.5 w-3.5 mr-1.5" />
+                    {sharing ? "Loading..." : "Report Issue"}
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -395,7 +488,7 @@ export default function JobDetailPage() {
                       : "text-muted-foreground hover:text-foreground hover:bg-muted/30 border border-transparent"
                   }`}
                 >
-                  {micId}
+                  {micDisplayName(micId)}
                 </button>
               ))}
             </div>

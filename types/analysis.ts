@@ -17,6 +17,7 @@ export interface RawAnalysisJob {
   template_id: string;
   template_name: string;
   mic_ids: string[];
+  mic_names?: string[];
   time_range_start_unix: number;
   time_range_end_unix: number;
   status: "pending" | "estimating" | "reserved" | "deducted" | "downloading" | "processing" | "chunking" | "synthesizing" | "queued" | "completed" | "failed" | "cancelled" | "refunded";
@@ -205,6 +206,7 @@ export interface AnalysisJob {
   templateId: string;
   templateName: string;
   micIds: string[];
+  micNames?: string[];
   timeRangeStart: string; // ISO
   timeRangeEnd: string;   // ISO
   status: RawAnalysisJob["status"];
