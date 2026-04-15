@@ -46,6 +46,10 @@ const DEMO_DEVICES_SETTINGS: Device[] = [
   { device_id: "dev_001", shop_id: "shop_001", label: "Store - Koramangala", location: "Bangalore", status: "streaming", last_seen_at: new Date().toISOString() },
 ];
 
+// Stable empty-array reference. Using `[]` inline (e.g. `data ?? []`) creates
+// a new array every render and breaks useEffect deps that compare by identity.
+const EMPTY_DEVICES: Device[] = [];
+
 const fadeUp = {
   initial: { opacity: 0, y: 10 },
   animate: { opacity: 1, y: 0 },
@@ -82,7 +86,7 @@ export default function SettingsPage() {
   );
 
   // SWR: devices (shared cache key with devices list page)
-  const { data: devices = [], isLoading: loading, mutate: mutateDevices } = useApi<Device[]>(
+  const { data: devicesData, isLoading: loading, mutate: mutateDevices } = useApi<Device[]>(
     isDemoMode ? null : "/devices",
     async (url) => {
       const raw = await apiFetch<RawDevice[]>(url);
@@ -90,13 +94,21 @@ export default function SettingsPage() {
     },
     { fallbackData: isDemoMode ? DEMO_DEVICES_SETTINGS : undefined },
   );
+  // Stable empty default — destructuring with `= []` creates a fresh array
+  // on every render when data is undefined, which would retrigger the
+  // label-sync effect below infinitely during auth-pending renders.
+  const devices = devicesData ?? EMPTY_DEVICES;
 
-  // Sync labels when devices load/change
+  // Sync labels when devices load/change. Depend on a stable signature
+  // (id+label pairs) instead of the array reference — SWR gives a new
+  // array each revalidation even when content is identical.
+  const devicesSignature = devices.map((d) => `${d.device_id}:${d.label}`).join("|");
   useEffect(() => {
     const init: Record<string, string> = {};
     devices.forEach((d) => { init[d.device_id] = d.label; });
     setLabels(init);
-  }, [devices]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [devicesSignature]);
 
   // Get Firebase user for display
   useEffect(() => {
