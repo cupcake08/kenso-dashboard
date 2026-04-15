@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { TrendingUp, RefreshCw, X, Clock, ArrowUpRight, ArrowDownRight, Receipt, CheckCircle2, AlertCircle, Layers } from "lucide-react";
+import { TrendingUp, RefreshCw, X, Clock, ArrowUpRight, ArrowDownRight, Receipt, CheckCircle2, AlertCircle, Layers, Sparkles, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { apiFetch, normalizeCredits } from "@/lib/api";
 import type { Transaction, RawCreditsResponse, UsageResponse } from "@/types/api";
@@ -33,7 +33,7 @@ const DEMO_USAGE: UsageResponse = {
   period_end: new Date(Date.now() + 17 * 86400000).toISOString(),
 };
 
-const DEMO_CREDITS = { balance: 16650, transactions: [
+const DEMO_CREDITS = { balance: 16650, balanceHours: 277.5, overageRatePerHourInr: 40, subscriptionState: "active" as const, transactions: [
   { id: "txn_001", type: "topup" as const, amount: 18000, description: "Monthly pool reset", created_at: new Date(Date.now() - 13 * 86400000).toISOString() },
   { id: "txn_002", type: "analysis" as const, amount: -900, description: "Audio analysis — Lobby Mic", created_at: new Date(Date.now() - 5 * 86400000).toISOString() },
   { id: "txn_003", type: "analysis" as const, amount: -450, description: "Audio analysis — Counter Mic", created_at: new Date(Date.now() - 2 * 86400000).toISOString() },
@@ -114,8 +114,13 @@ function TransactionItem({ txn }: { txn: Transaction }) {
 
 const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
+// Contact channel for upgrade requests. Update when a real support address
+// is set up.
+const UPGRADE_CONTACT_EMAIL = "support@knownsense.ai";
+
 export default function UsagePage() {
   const [showTopup, setShowTopup] = useState(false);
+  const [showUpgrade, setShowUpgrade] = useState(false);
   const [selectedHours, setSelectedHours] = useState(25);
   const [topupStatus, setTopupStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
 
@@ -137,7 +142,7 @@ export default function UsagePage() {
   );
 
   // Credits — balance + transaction history
-  const { data: credits, isLoading: creditsLoading, error: creditsError, mutate: mutateCredits } = useApi<{ balance: number; transactions: Transaction[] }>(
+  const { data: credits, isLoading: creditsLoading, error: creditsError, mutate: mutateCredits } = useApi<ReturnType<typeof normalizeCredits>>(
     isDemoMode ? null : "/credits",
     async (url) => {
       const raw = await apiFetch<RawCreditsResponse>(url);
@@ -302,9 +307,64 @@ export default function UsagePage() {
                 Top Up
               </Button>
             )}
+            {(usage?.subscription_state === "trialing" || usage?.subscription_state === "trial_ended") && (
+              <Button
+                onClick={() => setShowUpgrade(true)}
+                size="lg"
+                className="bg-primary hover:bg-primary/90 shrink-0"
+              >
+                <Sparkles className="h-4 w-4 mr-2" />
+                Upgrade
+              </Button>
+            )}
           </div>
         </div>
       </motion.div>
+
+      {/* Trial status banner */}
+      {usage?.subscription_state === "trialing" && credits?.trialEndsAt && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25 }}
+          className="rounded-xl border border-primary/20 bg-primary/5 px-5 py-3.5 flex items-center gap-3"
+        >
+          <Sparkles className="h-4 w-4 text-primary shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-foreground">
+              Free trial — {(() => {
+                const days = Math.max(0, Math.ceil((new Date(credits.trialEndsAt).getTime() - Date.now()) / 86400000));
+                return days === 1 ? "1 day left" : `${days} days left`;
+              })()}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Ready to continue? Contact our team to activate your full plan.
+            </p>
+          </div>
+          <Button size="sm" variant="outline" onClick={() => setShowUpgrade(true)} className="shrink-0">
+            Upgrade
+          </Button>
+        </motion.div>
+      )}
+      {usage?.subscription_state === "trial_ended" && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25 }}
+          className="rounded-xl border border-amber-400/30 bg-amber-400/5 px-5 py-3.5 flex items-center gap-3"
+        >
+          <AlertCircle className="h-4 w-4 text-amber-400 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-foreground">Trial ended</p>
+            <p className="text-xs text-muted-foreground">
+              Contact our team to activate your full plan and keep analyzing audio.
+            </p>
+          </div>
+          <Button size="sm" onClick={() => setShowUpgrade(true)} className="shrink-0">
+            Upgrade
+          </Button>
+        </motion.div>
+      )}
 
       {/* Plan info card */}
       {usage && (
@@ -479,6 +539,80 @@ export default function UsagePage() {
               >
                 {topupStatus === "submitting" ? "Submitting\u2026" : `Top Up ${selectedHours}h`}
               </Button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Upgrade Modal */}
+      <AnimatePresence>
+        {showUpgrade && (
+          <motion.div
+            key="upgrade-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+            onClick={() => setShowUpgrade(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 8 }}
+              transition={{ duration: 0.2 }}
+              className="w-full max-w-md rounded-xl border border-border bg-background p-6 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-5">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
+                    <Sparkles className="h-4 w-4 text-primary" />
+                  </div>
+                  <h2 className="text-lg font-semibold tracking-tight text-foreground">Upgrade to full plan</h2>
+                </div>
+                <button
+                  onClick={() => setShowUpgrade(false)}
+                  className="p-1 rounded text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <p className="text-sm text-muted-foreground mb-5 leading-relaxed">
+                To activate your full plan, reach out to our team. We&apos;ll set up your subscription,
+                send an invoice, and activate your account as soon as payment is received.
+              </p>
+
+              {/* How it works */}
+              <div className="rounded-lg border border-border bg-card/30 p-4 mb-5 space-y-3">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[0.6875rem] font-semibold text-primary tabular-nums">1</div>
+                  <p className="text-sm text-foreground leading-relaxed">Contact us to discuss devices + commitment tier (monthly / quarterly / annual).</p>
+                </div>
+                <div className="flex items-start gap-3">
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[0.6875rem] font-semibold text-primary tabular-nums">2</div>
+                  <p className="text-sm text-foreground leading-relaxed">We&apos;ll send a detailed invoice for the agreed plan.</p>
+                </div>
+                <div className="flex items-start gap-3">
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[0.6875rem] font-semibold text-primary tabular-nums">3</div>
+                  <p className="text-sm text-foreground leading-relaxed">Once payment lands, we activate your account — full analysis hours unlocked immediately.</p>
+                </div>
+              </div>
+
+              {/* Contact */}
+              <a
+                href={`mailto:${UPGRADE_CONTACT_EMAIL}?subject=Upgrade%20to%20full%20plan`}
+                className="flex items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 hover:bg-primary/10 transition-colors"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <Mail className="h-4 w-4 text-primary shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-xs text-muted-foreground">Email us</p>
+                    <p className="text-sm font-medium text-foreground truncate">{UPGRADE_CONTACT_EMAIL}</p>
+                  </div>
+                </div>
+                <ArrowUpRight className="h-4 w-4 text-primary shrink-0" />
+              </a>
             </motion.div>
           </motion.div>
         )}
