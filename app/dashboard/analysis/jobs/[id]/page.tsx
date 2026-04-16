@@ -323,7 +323,6 @@ export default function JobDetailPage() {
   // Fetch and display per-mic analysis result when a mic tab is clicked.
   async function handleMicTabClick(micId: string) {
     setSelectedMicId(micId);
-    if (!job?.micResultsAvailable) return;
 
     if (micId === viewingMicId) {
       // Clicking same tab again → toggle back to overview.
@@ -331,24 +330,22 @@ export default function JobDetailPage() {
       return;
     }
 
-    // Check cache first.
-    if (micResultsCache[micId]) {
-      setViewingMicId(micId);
-      return;
-    }
+    // Always switch to this mic's view (even if no per-mic data — we show a "no data" state).
+    setViewingMicId(micId);
+
+    // Check cache first — if already fetched all mic results, no need to refetch.
+    if (Object.keys(micResultsCache).length > 0) return;
 
     setLoadingMicResult(true);
     try {
-      const results = await getMicResults(job.jobId);
+      const results = await getMicResults(job!.jobId);
       const cache: Record<string, MicAnalysisResult> = {};
       for (const r of results) {
         cache[r.micId] = r;
       }
       setMicResultsCache(cache);
-      setViewingMicId(micId);
     } catch {
       toast.error("Failed to load per-mic results");
-      setViewingMicId(null);
     } finally {
       setLoadingMicResult(false);
     }
@@ -501,7 +498,7 @@ export default function JobDetailPage() {
       )}
 
       {/* Mic tabs — switch between overview and per-mic results */}
-      {job.micResultsAvailable && job.micIds.length > 1 && (
+      {job.micIds.length > 1 && (
         <div className="flex gap-2">
           <button
             onClick={() => setViewingMicId(null)}
@@ -534,15 +531,26 @@ export default function JobDetailPage() {
       )}
 
       {/* Result — dispatch to ReportShell (v2) or LegacyReport (pre-migration).
-          When a mic tab is selected, show that mic's per-mic result. */}
+          When a mic tab is selected, show that mic's per-mic result.
+          If the mic had no result (e.g. Gemini failed for that device), show a notice. */}
       {(() => {
-        const activeResult = viewingMicId && micResultsCache[viewingMicId]?.result
-          ? micResultsCache[viewingMicId].result
-          : result;
-        if (!activeResult) return null;
-        return isV2(activeResult)
-          ? <ReportShell result={activeResult} />
-          : <LegacyReport result={activeResult} />;
+        if (viewingMicId) {
+          if (loadingMicResult) return null; // skeleton handled by tab button label
+          const micResult = micResultsCache[viewingMicId]?.result;
+          if (!micResult) {
+            // Per-mic data missing — analysis failed for this device (e.g. Gemini 503)
+            return (
+              <div className="rounded-xl border border-border p-8 text-center">
+                <BarChart3 className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                <p className="text-sm font-medium text-foreground mb-1">No analysis for {micDisplayName(viewingMicId)}</p>
+                <p className="text-xs text-muted-foreground">The AI could not complete analysis for this device. The overview uses data from available devices.</p>
+              </div>
+            );
+          }
+          return isV2(micResult) ? <ReportShell result={micResult} /> : <LegacyReport result={micResult} />;
+        }
+        if (!result) return null;
+        return isV2(result) ? <ReportShell result={result} /> : <LegacyReport result={result} />;
       })()}
 
       {/* Recordings player — allows playback of segments referenced in the report */}
