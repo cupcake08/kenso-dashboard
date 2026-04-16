@@ -293,14 +293,13 @@ export default function JobDetailPage() {
         `Job ID: ${job.jobId}\n` +
         `Company: ${job.companyId}\n` +
         `Status: ${job.status}\n` +
-        `Template: ${job.templateName} (${job.templateId})\n` +
         `Failure Reason: ${job.failureReason || "N/A"}\n` +
         `Model: ${debug.model_name}\n` +
         `Duration: ${debug.duration_ms}ms\n` +
         `Token Usage: ${JSON.stringify(debug.token_usage, null, 2)}\n` +
         `Prompt Version: ${debug.prompt_version}\n` +
         `Time Range: ${job.timeRangeStart} → ${job.timeRangeEnd}\n` +
-        `Mics: ${job.micIds.join(", ")}\n` +
+        `Devices: ${job.micNames?.join(", ") || job.micIds.join(", ")}\n` +
         `Created: ${job.createdAt}\n\n` +
         `--- Raw Response (truncated) ---\n` +
         `${(debug.raw_gemini_response || "").slice(0, 2000)}`,

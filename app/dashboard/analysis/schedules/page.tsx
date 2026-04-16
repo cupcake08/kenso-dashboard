@@ -146,6 +146,16 @@ function targetLabel(s: AnalysisSchedule): string {
   return `${s.micIds.length} device${s.micIds.length !== 1 ? "s" : ""}`;
 }
 
+/** Human-readable schedule label: cadence + time window. Replaces the
+ *  vestigial template name as the primary identifier for a schedule. */
+function scheduleLabel(s: AnalysisSchedule): string {
+  const cadence = s.scheduleType === "one_time" ? "One time" : cronToDaysLabel(s.recurrenceRule);
+  if (s.analysisStartTime && s.analysisEndTime) {
+    return `${cadence} · ${s.analysisStartTime}–${s.analysisEndTime}`;
+  }
+  return cadence;
+}
+
 type PauseState = { scheduleId: string; date: string };
 
 export default function SchedulesPage() {
@@ -343,7 +353,7 @@ export default function SchedulesPage() {
   }
 
   async function handleDelete(s: AnalysisSchedule) {
-    if (!confirm(`Delete schedule for "${s.templateName}"?`)) return;
+    if (!confirm(`Delete this schedule (${scheduleLabel(s)})?`)) return;
     try {
       if (IS_DEMO) {
         setSchedules((prev) => prev.filter((x) => x.scheduleId !== s.scheduleId));
@@ -434,7 +444,7 @@ export default function SchedulesPage() {
             </div>
             <h3 className="text-base font-bold tracking-tight text-foreground">No schedules yet</h3>
             <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-              Automate analysis by running templates on a recurring schedule, or trigger a one-time analysis for a specific window.
+              Automate analysis by running it on a recurring schedule, or trigger a one-time analysis for a specific window.
             </p>
             {formMode === null && (
               <Button
@@ -457,7 +467,7 @@ export default function SchedulesPage() {
             <table className="w-full text-sm">
               <thead className="border-b border-border bg-muted/20">
                 <tr className="[&>th]:px-4 [&>th]:py-3 [&>th]:text-[10px] [&>th]:font-semibold [&>th]:uppercase [&>th]:tracking-[0.08em] [&>th]:text-muted-foreground">
-                  <th className="text-left">Template</th>
+                  <th className="text-left">Schedule</th>
                   <th className="text-left whitespace-nowrap">Target</th>
                   <th className="text-left">Schedule</th>
                   <th className="text-left">Status</th>
@@ -488,7 +498,7 @@ export default function SchedulesPage() {
                     >
                       <td className="px-4 py-4">
                         <p className="text-[0.9375rem] font-bold tracking-[-0.015em] text-foreground leading-[1.3]">
-                          {s.templateName}
+                          {scheduleLabel(s)}
                         </p>
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap">
@@ -714,7 +724,7 @@ export default function SchedulesPage() {
                   {/* Header row: title + status + actions — everything inline */}
                   <div className="flex items-center gap-3">
                     <p className="min-w-0 flex-1 truncate text-[0.9375rem] font-bold tracking-[-0.015em] leading-[1.3] text-foreground">
-                      {s.templateName}
+                      {scheduleLabel(s)}
                     </p>
 
                     {/* Status badge */}
