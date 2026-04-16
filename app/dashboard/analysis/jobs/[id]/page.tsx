@@ -501,7 +501,7 @@ export default function JobDetailPage() {
       )}
 
       {/* Mic tabs — switch between overview and per-mic results */}
-      {selectedMicId && job.micIds.length > 1 && (
+      {job.micResultsAvailable && job.micIds.length > 1 && (
         <div className="flex gap-2">
           <button
             onClick={() => setViewingMicId(null)}
