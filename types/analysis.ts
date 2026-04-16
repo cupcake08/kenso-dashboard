@@ -81,6 +81,34 @@ export interface RawGenericMetrics {
   };
 }
 
+export interface RawTicketingMetrics {
+  bookings_confidence: number;
+  bookings_detected: number;
+  bookings_by_channel: Record<string, number>;
+  avg_handling_time_sec: number;
+  peak_queue_time_sec: number;
+  cancellation_count: number;
+  no_show_count: number;
+  complaint_count: number;
+  payment_events_by_method: Record<string, number>;
+  upsell_attempts: number;
+  upsell_successes: number;
+  upsell_attach_rate: number;
+  top_upsell_moments: Array<{
+    staff_phrase: string;
+    item_attached: string;
+    converted: boolean;
+    reference: RawReference;
+  }>;
+  complaint_clusters: Array<{
+    theme: string;
+    count: number;
+    severity: string;
+    resolved: number;
+    first_example: RawReference;
+  }>;
+}
+
 export interface RawAnalysisResult {
   // Legacy fields
   summary: string;
@@ -118,6 +146,7 @@ export interface RawAnalysisResult {
 
   // V2 vertical extensions
   restaurant_metrics?: RawRestaurantMetrics;
+  ticketing_metrics?: RawTicketingMetrics;
   generic_metrics?: RawGenericMetrics;
 }
 
@@ -400,6 +429,34 @@ export type GenericMetrics = {
   classificationHint?: ClassificationHint;
 };
 
+export type TicketingMetrics = {
+  bookingsConfidence: number;
+  bookingsDetected: number;
+  bookingsByChannel: Record<string, number>;
+  avgHandlingTimeSec: number;
+  peakQueueTimeSec: number;
+  cancellationCount: number;
+  noShowCount: number;
+  complaintCount: number;
+  paymentEventsByMethod: Record<string, number>;
+  upsellAttempts: number;
+  upsellSuccesses: number;
+  upsellAttachRate: number;
+  topUpsellMoments: Array<{
+    staffPhrase: string;
+    itemAttached: string;
+    converted: boolean;
+    reference: Reference;
+  }>;
+  complaintClusters: Array<{
+    theme: string;
+    count: number;
+    severity: string;
+    resolved: number;
+    firstExample: Reference;
+  }>;
+};
+
 // Shared base fields present on every vertical's result.
 type AnalysisResultV2Base = {
   companyId: string;
@@ -426,6 +483,7 @@ type AnalysisResultV2Base = {
 // AnalysisResultV2 is the new canonical type for analytics pages.
 export type AnalysisResultV2 =
   | (AnalysisResultV2Base & { vertical: "restaurant"; restaurantMetrics: RestaurantMetrics })
+  | (AnalysisResultV2Base & { vertical: "ticketing"; ticketingMetrics: TicketingMetrics })
   | (AnalysisResultV2Base & { vertical: "generic"; genericMetrics: GenericMetrics })
   | (AnalysisResultV2Base & { vertical: "" /* legacy fallback — no vertical-specific metrics */ });
 

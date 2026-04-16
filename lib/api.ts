@@ -6,10 +6,10 @@ import type {
 } from "@/types/api";
 import type {
   RawAnalysisTemplate, RawAnalysisJob, RawEstimateResponse, RawAnalysisSchedule,
-  RawReference, RawRestaurantMetrics, RawGenericMetrics,
+  RawReference, RawRestaurantMetrics, RawTicketingMetrics, RawGenericMetrics,
   AnalysisTemplate, AnalysisJob, AnalysisResult, AnalysisResultV2, EstimateResult, AnalysisSchedule,
   OperatingSchedule, DaySchedule, DeviceOverride,
-  Reference, RestaurantMetrics, GenericMetrics, RawAnalysisResult,
+  Reference, RestaurantMetrics, TicketingMetrics, GenericMetrics, RawAnalysisResult,
   MicAnalysisResult, RawMicAnalysisResult,
 } from "@/types/analysis";
 import type {
@@ -257,6 +257,36 @@ function normalizeGenericMetrics(raw: RawGenericMetrics): GenericMetrics {
   };
 }
 
+function normalizeTicketingMetrics(raw: RawTicketingMetrics): TicketingMetrics {
+  return {
+    bookingsConfidence: raw.bookings_confidence,
+    bookingsDetected: raw.bookings_detected,
+    bookingsByChannel: raw.bookings_by_channel,
+    avgHandlingTimeSec: raw.avg_handling_time_sec,
+    peakQueueTimeSec: raw.peak_queue_time_sec,
+    cancellationCount: raw.cancellation_count,
+    noShowCount: raw.no_show_count,
+    complaintCount: raw.complaint_count,
+    paymentEventsByMethod: raw.payment_events_by_method,
+    upsellAttempts: raw.upsell_attempts,
+    upsellSuccesses: raw.upsell_successes,
+    upsellAttachRate: raw.upsell_attach_rate,
+    topUpsellMoments: raw.top_upsell_moments.map((m) => ({
+      staffPhrase: m.staff_phrase,
+      itemAttached: m.item_attached,
+      converted: m.converted,
+      reference: normalizeReference(m.reference),
+    })),
+    complaintClusters: raw.complaint_clusters.map((c) => ({
+      theme: c.theme,
+      count: c.count,
+      severity: c.severity,
+      resolved: c.resolved,
+      firstExample: normalizeReference(c.first_example),
+    })),
+  };
+}
+
 export function normalizeJob(raw: RawAnalysisJob): AnalysisJob {
   return {
     jobId: raw.job_id,
@@ -312,7 +342,7 @@ export function normalizeJob(raw: RawAnalysisJob): AnalysisJob {
           speakerBreakdown: raw.result.speaker_breakdown,
 
           // V2 identity
-          ...(raw.result.vertical != null && { vertical: raw.result.vertical as "restaurant" | "generic" | "" }),
+          ...(raw.result.vertical != null && { vertical: raw.result.vertical as "restaurant" | "ticketing" | "generic" | "" }),
           ...(raw.result.company_id && { companyId: raw.result.company_id }),
           ...(raw.result.shop_id && { shopId: raw.result.shop_id }),
           ...(raw.result.period && {
@@ -343,6 +373,9 @@ export function normalizeJob(raw: RawAnalysisJob): AnalysisJob {
           // V2 vertical extensions
           ...(raw.result.restaurant_metrics && {
             restaurantMetrics: normalizeRestaurantMetrics(raw.result.restaurant_metrics),
+          }),
+          ...(raw.result.ticketing_metrics && {
+            ticketingMetrics: normalizeTicketingMetrics(raw.result.ticketing_metrics),
           }),
           ...(raw.result.generic_metrics && {
             genericMetrics: normalizeGenericMetrics(raw.result.generic_metrics),
@@ -470,7 +503,7 @@ function normalizeRawResult(raw: RawAnalysisResult): AnalysisResult | AnalysisRe
   };
 
   // V2 identity fields.
-  if (raw.vertical != null) normalized.vertical = raw.vertical as "restaurant" | "generic" | "";
+  if (raw.vertical != null) normalized.vertical = raw.vertical as "restaurant" | "ticketing" | "generic" | "";
   if (raw.company_id) normalized.companyId = raw.company_id;
   if (raw.shop_id) normalized.shopId = raw.shop_id;
   if (raw.period) {
@@ -501,6 +534,9 @@ function normalizeRawResult(raw: RawAnalysisResult): AnalysisResult | AnalysisRe
   // V2 vertical extensions.
   if (raw.restaurant_metrics) {
     normalized.restaurantMetrics = normalizeRestaurantMetrics(raw.restaurant_metrics);
+  }
+  if (raw.ticketing_metrics) {
+    normalized.ticketingMetrics = normalizeTicketingMetrics(raw.ticketing_metrics);
   }
   if (raw.generic_metrics) {
     normalized.genericMetrics = normalizeGenericMetrics(raw.generic_metrics);

@@ -11,6 +11,15 @@ function metricsFor(result: AnalysisResultV2): Array<{ label: string; value: str
       { label: "avg sentiment", value: result.sentiment?.average?.toFixed(2) ?? "–" },
     ];
   }
+  if (result.vertical === "ticketing") {
+    const m = result.ticketingMetrics;
+    return [
+      { label: "bookings", value: m.bookingsDetected },
+      { label: "upsell attach", value: `${Math.round(m.upsellAttachRate * 100)}%` },
+      { label: "complaints", value: m.complaintCount },
+      { label: "avg sentiment", value: result.sentiment?.average?.toFixed(2) ?? "–" },
+    ];
+  }
   if (result.vertical === "generic") {
     const m = result.genericMetrics;
     return [
