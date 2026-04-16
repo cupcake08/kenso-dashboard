@@ -107,7 +107,7 @@ function friendlyFailureReason(reason: string, isTrial: boolean): string {
     return "The analysis could not be completed. Please try again later.";
   if (reason.includes("rate limit") || reason.includes("RESOURCE_EXHAUSTED"))
     return "Our AI provider is temporarily overloaded. Please try again in a few minutes.";
-  if (reason.includes("temporarily unavailable"))
+  if (reason.includes("temporarily unavailable") || reason.includes("overloaded") || reason.includes("queued for automatic retry"))
     return "Our AI provider is temporarily unavailable. Your job has been queued and will retry automatically.";
   return "Something went wrong during analysis. Please try again, or contact support if this persists.";
 }
@@ -370,7 +370,7 @@ export default function JobDetailPage() {
     );
   }
 
-  const isInProgress = ["pending", "estimating", "deducted", "downloading", "processing", "chunking", "synthesizing"].includes(job.status);
+  const isInProgress = ["pending", "estimating", "deducted", "downloading", "processing", "chunking", "synthesizing", "queued"].includes(job.status);
   const result = job.result;
 
   return (
@@ -444,7 +444,17 @@ export default function JobDetailPage() {
         ))}
       </div>
 
-      {job.failureReason && (
+      {job.status === "queued" && (
+        <div className="rounded-lg border border-amber-400/30 bg-amber-400/5 p-4 flex items-start gap-3">
+          <Loader2 className="h-4 w-4 animate-spin text-amber-400 mt-0.5 shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-amber-300">Waiting to retry</p>
+            <p className="text-xs text-muted-foreground mt-0.5">The AI provider was temporarily overloaded. Your job is queued and will retry automatically — no action needed. Credits are preserved.</p>
+          </div>
+        </div>
+      )}
+
+      {job.failureReason && job.status !== "queued" && (
         <div className="rounded-lg border border-red-400/30 bg-red-400/5 p-4">
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <div className="flex-1 min-w-0">
