@@ -22,13 +22,16 @@ export function SectionRenderer({
     case "worth_attention":
       return <WorthAttention result={result} />;
     case "deep_dive":
-      if (result.vertical === "restaurant") {
+      // Each vertical's metrics are optional at runtime — Gemini can return a
+      // result without them (sparse schema, missing field). Skip the section
+      // rather than crashing the page when the metrics object is undefined.
+      if (result.vertical === "restaurant" && result.restaurantMetrics) {
         return <RestaurantDeepDive metrics={result.restaurantMetrics} />;
       }
-      if (result.vertical === "ticketing") {
+      if (result.vertical === "ticketing" && result.ticketingMetrics) {
         return <TicketingDeepDive metrics={result.ticketingMetrics} />;
       }
-      if (result.vertical === "generic") {
+      if (result.vertical === "generic" && result.genericMetrics) {
         return <GenericDeepDive metrics={result.genericMetrics} />;
       }
       return null;

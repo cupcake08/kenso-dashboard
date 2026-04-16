@@ -2,7 +2,9 @@ import type { AnalysisResultV2 } from "@/types/analysis";
 import { Sparkline } from "./sparkline";
 
 function metricsFor(result: AnalysisResultV2): Array<{ label: string; value: string | number }> {
-  if (result.vertical === "restaurant") {
+  // Vertical metrics can be undefined at runtime (Gemini response missing
+  // the field). Fall through to the legacy shape in that case.
+  if (result.vertical === "restaurant" && result.restaurantMetrics) {
     const m = result.restaurantMetrics;
     return [
       { label: "orders", value: m.ordersDetected },
@@ -11,7 +13,7 @@ function metricsFor(result: AnalysisResultV2): Array<{ label: string; value: str
       { label: "avg sentiment", value: result.sentiment?.average?.toFixed(2) ?? "–" },
     ];
   }
-  if (result.vertical === "ticketing") {
+  if (result.vertical === "ticketing" && result.ticketingMetrics) {
     const m = result.ticketingMetrics;
     return [
       { label: "bookings", value: m.bookingsDetected },
@@ -20,11 +22,11 @@ function metricsFor(result: AnalysisResultV2): Array<{ label: string; value: str
       { label: "avg sentiment", value: result.sentiment?.average?.toFixed(2) ?? "–" },
     ];
   }
-  if (result.vertical === "generic") {
+  if (result.vertical === "generic" && result.genericMetrics) {
     const m = result.genericMetrics;
     return [
       { label: "conversations", value: m.conversationCount },
-      { label: "topics", value: m.topics.length },
+      { label: "topics", value: (m.topics ?? []).length },
       { label: "minutes analyzed", value: result.minutesAnalyzed ?? 0 },
       { label: "avg sentiment", value: result.sentiment?.average?.toFixed(2) ?? "–" },
     ];

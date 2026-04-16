@@ -216,6 +216,8 @@ function normalizeReference(raw: RawReference): Reference {
 }
 
 function normalizeRestaurantMetrics(raw: RawRestaurantMetrics): RestaurantMetrics {
+  // Go nil slices/maps serialize to `null`, not `[]`/`{}`. Guard every collection
+  // access so an empty-metrics result doesn't crash the report renderer.
   return {
     ordersConfidence: raw.orders_confidence,
     ordersDetected: raw.orders_detected,
@@ -225,14 +227,14 @@ function normalizeRestaurantMetrics(raw: RawRestaurantMetrics): RestaurantMetric
     avgWaitTimeSec: raw.avg_wait_time_sec,
     peakWaitTimeSec: raw.peak_wait_time_sec,
     complaintCount: raw.complaint_count,
-    paymentEventsByMethod: raw.payment_events_by_method,
-    topUpsellMoments: raw.top_upsell_moments.map((m) => ({
+    paymentEventsByMethod: raw.payment_events_by_method ?? {},
+    topUpsellMoments: (raw.top_upsell_moments ?? []).map((m) => ({
       staffPhrase: m.staff_phrase,
       itemAttached: m.item_attached,
       converted: m.converted,
       reference: normalizeReference(m.reference),
     })),
-    complaintClusters: raw.complaint_clusters.map((c) => ({
+    complaintClusters: (raw.complaint_clusters ?? []).map((c) => ({
       theme: c.theme,
       count: c.count,
       severity: c.severity,
@@ -246,7 +248,7 @@ function normalizeGenericMetrics(raw: RawGenericMetrics): GenericMetrics {
   return {
     conversationCount: raw.conversation_count,
     avgConversationSec: raw.avg_conversation_sec,
-    topics: raw.topics,
+    topics: raw.topics ?? [],
     ...(raw.classification_hint && {
       classificationHint: {
         vertical: raw.classification_hint.vertical as GenericMetrics["classificationHint"] extends { vertical: infer V } ? V : never,
@@ -258,26 +260,28 @@ function normalizeGenericMetrics(raw: RawGenericMetrics): GenericMetrics {
 }
 
 function normalizeTicketingMetrics(raw: RawTicketingMetrics): TicketingMetrics {
+  // Go nil slices/maps serialize to `null`, not `[]`/`{}`. Guard every collection
+  // access so an empty-metrics result doesn't crash the report renderer.
   return {
     bookingsConfidence: raw.bookings_confidence,
     bookingsDetected: raw.bookings_detected,
-    bookingsByChannel: raw.bookings_by_channel,
+    bookingsByChannel: raw.bookings_by_channel ?? {},
     avgHandlingTimeSec: raw.avg_handling_time_sec,
     peakQueueTimeSec: raw.peak_queue_time_sec,
     cancellationCount: raw.cancellation_count,
     noShowCount: raw.no_show_count,
     complaintCount: raw.complaint_count,
-    paymentEventsByMethod: raw.payment_events_by_method,
+    paymentEventsByMethod: raw.payment_events_by_method ?? {},
     upsellAttempts: raw.upsell_attempts,
     upsellSuccesses: raw.upsell_successes,
     upsellAttachRate: raw.upsell_attach_rate,
-    topUpsellMoments: raw.top_upsell_moments.map((m) => ({
+    topUpsellMoments: (raw.top_upsell_moments ?? []).map((m) => ({
       staffPhrase: m.staff_phrase,
       itemAttached: m.item_attached,
       converted: m.converted,
       reference: normalizeReference(m.reference),
     })),
-    complaintClusters: raw.complaint_clusters.map((c) => ({
+    complaintClusters: (raw.complaint_clusters ?? []).map((c) => ({
       theme: c.theme,
       count: c.count,
       severity: c.severity,

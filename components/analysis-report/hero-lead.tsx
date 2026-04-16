@@ -13,7 +13,8 @@ export function HeroLead({ result }: { result: AnalysisResultV2 }) {
   }
 
   // Fallback: first sentence of summary as a large editorial headline.
-  const firstSentence = result.summary.split(/(?<=[.!?])\s+/)[0] ?? result.summary;
+  const summary = result.summary ?? "";
+  const firstSentence = summary.split(/(?<=[.!?])\s+/)[0] ?? summary;
   return (
     <section className="mb-8">
       <h2 className="font-display text-3xl md:text-4xl leading-tight max-w-[65ch]">
