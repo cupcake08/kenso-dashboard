@@ -3,6 +3,7 @@ import type {
   RawDevice, RawWindowSummary, RawWindowDetail, RawCreditsResponse,
   RawSubscriptionStatus, Device, WindowSummary, WindowDetail, Transaction,
   UsageResponse,
+  RawAnalysisRunSummary, RawAnalysisRunDetail, AnalysisRunSummary, AnalysisRunDetail,
 } from "@/types/api";
 import type {
   RawAnalysisTemplate, RawAnalysisJob, RawEstimateResponse, RawAnalysisSchedule,
@@ -260,6 +261,33 @@ export function normalizeWindowDetail(raw: RawWindowDetail): WindowDetail {
     duration_minutes: Math.round(raw.duration_ms / 60000),
     summary: raw.summary,
     flags: raw.flags,
+    highlights: raw.highlights,
+    utterances: raw.utterances.map((u) => ({
+      speaker: u.speaker,
+      text: u.text,
+      absolute_time: unixToISO(u.absolute_time_unix),
+    })),
+  };
+}
+
+export function normalizeAnalysisRun(raw: RawAnalysisRunSummary): AnalysisRunSummary {
+  return {
+    run_id: raw.run_id,
+    started_at: unixToISO(raw.started_at_unix),
+    duration_minutes: Math.round(raw.duration_ms / 60000),
+    status: raw.status,
+    finding_count: raw.finding_count,
+  };
+}
+
+export function normalizeAnalysisRunDetail(raw: RawAnalysisRunDetail): AnalysisRunDetail {
+  return {
+    run_id: raw.run_id,
+    started_at: unixToISO(raw.started_at_unix),
+    duration_minutes: Math.round(raw.duration_ms / 60000),
+    status: raw.status,
+    summary: raw.summary,
+    findings: raw.findings,
     highlights: raw.highlights,
     utterances: raw.utterances.map((u) => ({
       speaker: u.speaker,

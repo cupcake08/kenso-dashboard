@@ -131,6 +131,82 @@ export interface WindowUtterance {
   absolute_time: string;
 }
 
+export interface RawAnalysisRunSummary {
+  run_id: string;
+  started_at_unix: number;
+  duration_ms: number;
+  finding_count: number;
+  status: "pending" | "analyzing" | "ready" | "failed";
+}
+
+export interface RawAnalysisRunDetail {
+  run_id: string;
+  started_at_unix: number;
+  duration_ms: number;
+  status: "pending" | "analyzing" | "ready" | "failed";
+  summary: string;
+  findings: RawAnalysisRunFinding[];
+  highlights: RawAnalysisRunHighlight[];
+  utterances: RawAnalysisRunUtterance[];
+}
+
+export interface RawAnalysisRunFinding {
+  finding_type: string;
+  title: string;
+  description?: string;
+  severity: "info" | "warning" | "critical";
+}
+
+export interface RawAnalysisRunHighlight {
+  type: string;
+  time: string;
+  description: string;
+}
+
+export interface RawAnalysisRunUtterance {
+  speaker: string;
+  text: string;
+  absolute_time_unix: number;
+}
+
+export interface AnalysisRunSummary {
+  run_id: string;
+  started_at: string;
+  duration_minutes: number;
+  status: "pending" | "analyzing" | "ready" | "failed";
+  finding_count: number;
+}
+
+export interface AnalysisRunDetail {
+  run_id: string;
+  started_at: string;
+  duration_minutes: number;
+  status: "pending" | "analyzing" | "ready" | "failed";
+  summary: string;
+  findings: AnalysisRunFinding[];
+  highlights: AnalysisRunHighlight[];
+  utterances: AnalysisRunUtterance[];
+}
+
+export interface AnalysisRunFinding {
+  finding_type: string;
+  title: string;
+  description?: string;
+  severity: "info" | "warning" | "critical";
+}
+
+export interface AnalysisRunHighlight {
+  type: string;
+  time: string;
+  description: string;
+}
+
+export interface AnalysisRunUtterance {
+  speaker: string;
+  text: string;
+  absolute_time: string;
+}
+
 export interface Transaction {
   id: string;
   type: "topup" | "analysis" | "expiry";
