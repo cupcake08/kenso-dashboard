@@ -430,6 +430,8 @@ const sandboxStarterEnvExample = `KENSO_API_BASE=https://audio.knownsense.ai
 KENSO_API_KEY=ks_sandbox_...
 KENSO_WEBHOOK_SECRET=whsec_...
 KENSO_WEBHOOK_EVENT_LOG=./data/received_events.jsonl
+# optional: let shell KENSO_* vars override .env only when you mean it
+# KENSO_PREFER_PROCESS_ENV=true
 KENSO_WEBHOOK_HOST=127.0.0.1
 KENSO_WEBHOOK_PORT=8787
 KENSO_WEBHOOK_PATH=/webhooks/knownsense`;
@@ -451,7 +453,11 @@ ngrok http 8787
 # dashboard: add the ngrok HTTPS URL as
 # https://<public-host>/webhooks/knownsense
 
-# terminal 3: create a fresh sandbox job and wait for the webhook
+# terminal 3: verify config and auth before creating a job
+python sandbox_client.py show-config
+python sandbox_client.py list-fixtures
+
+# terminal 4: create a fresh sandbox job and wait for the webhook
 python sandbox_client.py create-from-fixture \\
   --fixture-id generic_success \\
   --avoid-cache \\
@@ -459,9 +465,28 @@ python sandbox_client.py create-from-fixture \\
   --expected-event-type job.completed`;
 
 const sandboxStarterSmokeSuiteExample = `source .venv/bin/activate
+python sandbox_client.py create-from-fixture \\
+  --fixture-id verification_refunded \\
+  --avoid-cache \\
+  --wait-webhook \\
+  --expected-event-type job.refunded
+
+python sandbox_client.py create-from-fixture \\
+  --fixture-id generic_success \\
+  --avoid-cache \\
+  --poll
+
 python sandbox_client.py run-smoke-suite \\
   --verify-webhooks \\
   --webhook-timeout-seconds 120`;
+
+const sandboxStarterFirstChecksExample = `python sandbox_client.py show-config
+python sandbox_client.py list-fixtures
+
+# interpret list-fixtures like this:
+# 200  -> sandbox key is valid
+# 404  -> valid production key, not a sandbox key
+# 401  -> wrong/revoked key, wrong workspace, or backend auth issue`;
 
 const sections = [
   { id: "overview", label: "Overview" },
@@ -997,7 +1022,7 @@ export default function DeveloperDocsPage() {
                 icon={KeyRound}
                 label="Get From KnownSense"
                 value="Sandbox API key"
-                detail="Generate it from dashboard settings after switching into the sandbox workspace. Production and sandbox keys are different."
+                detail="Generate it from dashboard settings after switching into the sandbox workspace. Production and sandbox keys are different, even though both use the same API host."
               />
               <KeyValueCard
                 icon={Webhook}
@@ -1009,7 +1034,7 @@ export default function DeveloperDocsPage() {
                 icon={ListTree}
                 label="Run Locally"
                 value="receiver.py + sandbox_client.py"
-                detail="The starter project includes a verified webhook receiver and a CLI harness for fixtures, create-job calls, polling, and smoke tests."
+                detail="The starter includes a verified webhook receiver plus a CLI harness for config checks, fixture discovery, create-job calls, polling, and smoke tests."
               />
               <KeyValueCard
                 icon={Clock3}
@@ -1034,19 +1059,30 @@ export default function DeveloperDocsPage() {
               />
             </div>
 
-            <div className="grid gap-4 md:grid-cols-3">
+            <CodeExample
+              title="Run these first before any create-job test"
+              language="bash"
+              code={sandboxStarterFirstChecksExample}
+              maxHeight="12rem"
+            />
+
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               {[
                 {
-                  title: "1. Configure webhook plumbing",
-                  body: "Run receiver.py, expose it with ngrok, and register the current HTTPS tunnel URL in the sandbox webhook settings page.",
+                  title: "1. Verify local config",
+                  body: "Run show-config first. It confirms whether the starter is reading the sandbox key from .env or from a stale shell export.",
                 },
                 {
-                  title: "2. Run a webhook-first job",
-                  body: "Use create-from-fixture with --avoid-cache and --wait-webhook so the test proves callback delivery instead of only polling state.",
+                  title: "2. Verify sandbox auth",
+                  body: "Run list-fixtures before job creation. Fix 401 or 404 here first instead of debugging create-from-fixture blindly.",
                 },
                 {
-                  title: "3. Run the smoke suite",
-                  body: "Execute the full suite with --verify-webhooks to validate generic success, verification success, refunded state, and the corresponding terminal events.",
+                  title: "3. Test webhook reachability",
+                  body: "Use the dashboard Send Test button to prove the current tunnel URL can receive signed webhook.test events.",
+                },
+                {
+                  title: "4. Run real lifecycle tests",
+                  body: "Then validate generic success, refunded terminal state, polling-only fallback, and finally the webhook-aware smoke suite.",
                 },
               ].map((item) => (
                 <div key={item.title} className="rounded-[1.2rem] border border-border/70 bg-background/45 p-5">
@@ -1058,14 +1094,14 @@ export default function DeveloperDocsPage() {
 
             <CodeTabs
               title="Recommended starter-project test commands"
-              description="These are the two flows we recommend every integration team runs before moving to production credentials."
+              description="Run the auth checks first, then use these two flows before moving to production credentials."
               maxHeight="20rem"
               tabs={[
                 {
                   id: "starter-webhook-flow",
                   label: "Webhook-first",
                   language: "bash",
-                  title: "Create a fresh job and wait for job.completed",
+                  title: "Verify config, verify auth, then wait for job.completed",
                   note: "Best for proving end-to-end callback handling without relying only on GET /jobs/{id}.",
                   code: sandboxStarterWebhookFlowExample,
                 },
@@ -1073,12 +1109,57 @@ export default function DeveloperDocsPage() {
                   id: "starter-smoke-suite",
                   label: "Smoke suite",
                   language: "bash",
-                  title: "Run the full sandbox validation suite",
-                  note: "Covers generic success, verification success, refunded terminal state, and webhook verification.",
+                  title: "Finish the refunded path, polling path, and smoke suite",
+                  note: "Covers refunded terminal state, polling fallback, generic success, verification success, and webhook verification.",
                   code: sandboxStarterSmokeSuiteExample,
                 },
               ]}
             />
+
+            <div className="rounded-[1.2rem] border border-amber-500/30 bg-amber-500/[0.08] p-5">
+              <p className="text-sm font-semibold text-foreground">Common Issues During Testing</p>
+              <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                {[
+                  {
+                    title: "Dashboard Send Test works, but Python calls fail",
+                    body: "The dashboard test uses your logged-in dashboard session. The starter uses X-API-Key. Webhook reachability can be correct while API auth is still wrong.",
+                  },
+                  {
+                    title: "show-config says process_env",
+                    body: "A stale exported KENSO_* shell variable is overriding your local expectations. Keep using .env unless you intentionally set KENSO_PREFER_PROCESS_ENV=true.",
+                  },
+                  {
+                    title: "list-fixtures returns 404",
+                    body: "That usually means the key is valid but belongs to the production workspace, not the sandbox workspace.",
+                  },
+                  {
+                    title: "list-fixtures returns 401",
+                    body: "That usually means the key is wrong, revoked, malformed, from another workspace, or there is a backend auth issue. Capture the returned X-Request-ID before escalating.",
+                  },
+                  {
+                    title: "create-from-fixture fails before creating a job",
+                    body: "The CLI loads sandbox fixtures first. If list-fixtures is failing, job creation never really starts. Fix auth and fixture discovery before debugging jobs.",
+                  },
+                  {
+                    title: "--wait-webhook times out",
+                    body: "The job may still have completed. Check receiver.py, ngrok, the saved webhook URL, dashboard delivery history, and polling before assuming processing failed.",
+                  },
+                  {
+                    title: "Deliveries stay queued",
+                    body: "First confirm the receiver is up and the tunnel URL is still current. If both are correct, treat it as a backend delivery problem rather than a client parsing bug.",
+                  },
+                  {
+                    title: "Repeated tests reuse old results",
+                    body: "Use --avoid-cache on repeated sandbox runs so you force a fresh deterministic job instead of reading a prior cached response.",
+                  },
+                ].map((item) => (
+                  <div key={item.title} className="rounded-[1rem] border border-border/60 bg-background/40 p-4">
+                    <p className="text-sm font-semibold text-foreground">{item.title}</p>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground text-pretty">{item.body}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
 
             <div className="rounded-[1.2rem] border border-border/70 bg-background/45 p-5">
               <p className="text-sm font-semibold text-foreground">What your team should have before going live</p>
