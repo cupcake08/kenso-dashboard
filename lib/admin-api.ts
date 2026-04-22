@@ -61,6 +61,34 @@ export interface GenerateKeyResponse {
   key_prefix: string;
 }
 
+export type AuditLogSource = "api_request" | "api_request_legacy" | "admin_action";
+
+export interface AuditLogEntry {
+  entry_id: string;
+  source: AuditLogSource;
+  action: string;
+  request_id?: string;
+  key_prefix?: string;
+  status_code?: number;
+  error_code?: string;
+  summary?: string;
+  remote_addr?: string;
+  method?: string;
+  path?: string;
+  payload?: Record<string, unknown>;
+  timestamp_unix: number;
+}
+
+export interface AuditLogFilters {
+  limit?: number;
+  source?: AuditLogSource | "";
+  action?: string;
+  method?: string;
+  request_id?: string;
+  key_prefix?: string;
+  status_code?: number;
+}
+
 /* ── Enterprise API admin functions ── */
 
 export async function getCompanyAPIStatus(cid: string): Promise<CompanyAPIStatus> {
@@ -181,6 +209,15 @@ export async function retryAnalysisJob(jobId: string): Promise<RetryJobResponse>
   );
 }
 
-export async function listAuditLog(cid: string): Promise<unknown[]> {
-  return adminFetch<unknown[]>(`/v2/admin/companies/${cid}/api-audit-log`);
+export async function listAuditLog(cid: string, filters?: AuditLogFilters): Promise<AuditLogEntry[]> {
+  const query = new URLSearchParams();
+  if (filters?.limit) query.set("limit", String(filters.limit));
+  if (filters?.source) query.set("source", filters.source);
+  if (filters?.action) query.set("action", filters.action);
+  if (filters?.method) query.set("method", filters.method);
+  if (filters?.request_id) query.set("request_id", filters.request_id);
+  if (filters?.key_prefix) query.set("key_prefix", filters.key_prefix);
+  if (typeof filters?.status_code === "number") query.set("status_code", String(filters.status_code));
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return adminFetch<AuditLogEntry[]>(`/v2/admin/companies/${cid}/api-audit-log${suffix}`);
 }

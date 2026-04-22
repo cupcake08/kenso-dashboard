@@ -54,26 +54,25 @@ function DayTimeline({ segments, offsets, currentTime, totalDuration, onSeek }: 
   onSeek: (audioSeconds: number) => void;
 }) {
   const [hoverInfo, setHoverInfo] = useState<{ pct: number; label: string } | null>(null);
-
-  if (segments.length < 2) return null;
-
-  const firstStart = segments[0].start_time_unix;
-  const lastEnd = segments[segments.length - 1].end_time_unix;
+  const hasTimeline = segments.length >= 2;
+  const firstStart = hasTimeline ? segments[0].start_time_unix : 0;
+  const lastEnd = hasTimeline ? segments[segments.length - 1].end_time_unix : 0;
   const span = lastEnd - firstStart;
-  if (span <= 0) return null;
 
   // Convert current audio time → timeline percentage.
   // Computed directly every render (no useMemo) — the calculation is cheap
   // and useMemo can skip recomputation during rapid rAF state updates.
   let playheadPct = 0;
-  for (let i = 0; i < segments.length; i++) {
-    const segDur = segments[i].duration_ms / 1000;
-    const segEnd = offsets[i] + segDur;
-    if (currentTime <= segEnd || i === segments.length - 1) {
-      const frac = segDur > 0 ? Math.min(1, Math.max(0, (currentTime - offsets[i]) / segDur)) : 0;
-      const unixAt = segments[i].start_time_unix + frac * (segments[i].end_time_unix - segments[i].start_time_unix);
-      playheadPct = ((unixAt - firstStart) / span) * 100;
-      break;
+  if (hasTimeline && span > 0) {
+    for (let i = 0; i < segments.length; i++) {
+      const segDur = segments[i].duration_ms / 1000;
+      const segEnd = offsets[i] + segDur;
+      if (currentTime <= segEnd || i === segments.length - 1) {
+        const frac = segDur > 0 ? Math.min(1, Math.max(0, (currentTime - offsets[i]) / segDur)) : 0;
+        const unixAt = segments[i].start_time_unix + frac * (segments[i].end_time_unix - segments[i].start_time_unix);
+        playheadPct = ((unixAt - firstStart) / span) * 100;
+        break;
+      }
     }
   }
 
@@ -113,6 +112,7 @@ function DayTimeline({ segments, offsets, currentTime, totalDuration, onSeek }: 
 
   // Hour boundary lines (skip lines too close to edges)
   const hourLines = useMemo(() => {
+    if (!hasTimeline || span <= 0) return [];
     const lines: number[] = [];
     let t = Math.ceil(firstStart / 3600) * 3600;
     while (t < lastEnd) {
@@ -121,7 +121,9 @@ function DayTimeline({ segments, offsets, currentTime, totalDuration, onSeek }: 
       t += 3600;
     }
     return lines;
-  }, [firstStart, lastEnd, span]);
+  }, [firstStart, hasTimeline, lastEnd, span]);
+
+  if (!hasTimeline || span <= 0) return null;
 
   return (
     <div className="px-1 mb-1">

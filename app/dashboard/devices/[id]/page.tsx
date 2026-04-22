@@ -141,7 +141,6 @@ export default function DeviceDetailPage() {
   return (
     <div>
       {/* Hidden audio element for WebRTC playback — must be in DOM for autoplay policy */}
-      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
       <audio ref={audioRef} autoPlay playsInline style={{ display: "none" }} />
       {/* Back */}
       <Link href="/dashboard/devices" className="mb-3 sm:mb-4 -ml-1 inline-flex items-center gap-1.5 px-1 py-1 rounded-md text-sm text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">

@@ -73,11 +73,11 @@ export default function BusinessTypeSettingsPage() {
   const [savingDesc, setSavingDesc] = useState(false);
 
   // Sync description from loaded state
+  const savedDescription = state?.description ?? "";
+
   useEffect(() => {
-    if (state) {
-      setDescription(state.description ?? "");
-    }
-  }, [state?.description]);
+    setDescription(savedDescription);
+  }, [savedDescription]);
 
   // Modal: auto-focus confirm button + Escape to close
   useEffect(() => {
@@ -90,7 +90,6 @@ export default function BusinessTypeSettingsPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [pendingPick]);
 
-  const savedDescription = state?.description ?? "";
   const descUnchanged = description === savedDescription;
 
   function handlePick(bt: Exclude<BusinessType, "">) {

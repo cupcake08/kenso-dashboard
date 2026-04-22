@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { apiFetch, normalizeDevice, enableMic, disableMic, whoami } from "@/lib/api";
+import { apiFetch, normalizeDevice, enableMic, disableMic, whoami, pickActiveCompanyId } from "@/lib/api";
 import type { Device, RawDevice } from "@/types/api";
 import { useApi } from "@/hooks/use-api";
 import { DeviceCard } from "@/components/dashboard/device-card";
@@ -38,8 +38,7 @@ export default function DevicesPage() {
     isDemoMode ? null : "/_whoami_company",
     async () => {
       const who = await whoami();
-      const active = who?.memberships?.find((m) => m.status === "active");
-      return active?.company_id ?? "";
+      return pickActiveCompanyId(who?.memberships);
     },
     { fallbackData: isDemoMode ? DEMO_COMPANY_ID : undefined },
   );

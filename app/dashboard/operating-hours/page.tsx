@@ -341,7 +341,7 @@ export default function OperatingHoursPage() {
       cancelled = true;
       unsub?.();
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   async function loadData() {
     if (IS_DEMO) {

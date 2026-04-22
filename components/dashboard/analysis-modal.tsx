@@ -400,7 +400,7 @@ export function AnalysisModal({ open, onClose, onJobCreated, balance, subscripti
     } finally {
       setSubmitting(false);
     }
-  }, [selectedMics, rangeStart, rangeEnd, notes, estimate, onJobCreated, onClose]);
+  }, [selectedMics, rangeStart, rangeEnd, notes, estimate, isTrial, onJobCreated, onClose]);
 
   return (
     <AnimatePresence>

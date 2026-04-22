@@ -351,7 +351,7 @@ export default function AnalysisPage() {
             <div className="rounded-xl border border-border bg-card/30 p-10 text-center">
               <BarChart3 className="h-7 w-7 text-muted-foreground/30 mx-auto mb-3" />
               <p className="text-sm font-medium text-foreground/70">No analysis jobs yet</p>
-              <p className="text-xs text-muted-foreground/50 mt-1">Click "New Analysis" above to run your first analysis</p>
+              <p className="text-xs text-muted-foreground/50 mt-1">Click &quot;New Analysis&quot; above to run your first analysis</p>
             </div>
           ) : (
             <>

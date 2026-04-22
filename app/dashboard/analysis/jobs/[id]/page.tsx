@@ -184,9 +184,10 @@ export default function JobDetailPage() {
 
   // SSE for live status updates
   useEffect(() => {
-    if (IS_DEMO || !job) return;
+    const currentStatus = job?.status;
+    if (IS_DEMO || !currentStatus) return;
     const terminal = ["completed", "failed", "cancelled", "refunded"];
-    if (terminal.includes(job.status)) return;
+    if (terminal.includes(currentStatus)) return;
 
     const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
     let source: EventSource | null = null;
@@ -203,7 +204,7 @@ export default function JobDetailPage() {
       source.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          if (data.status && data.status !== job.status) {
+          if (data.status && data.status !== currentStatus) {
             getJob(id).then(setJob).catch(() => {});
             if (data.status === "completed") {
               toast.success("Analysis complete");

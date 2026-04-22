@@ -127,7 +127,6 @@ function GenerateKeyModal({
     setLoading(true);
     setError("");
     try {
-      // eslint-disable-next-line react-hooks/rules-of-hooks -- cid comes from parent context, not a hook
       const res = await generateAPIKey(
         (GenerateKeyModal as unknown as { _cid?: string })._cid || "",
         label.trim()

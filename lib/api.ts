@@ -19,6 +19,102 @@ import type {
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
 
+const SELECTED_COMPANY_STORAGE_KEY = "selected-company-id";
+
+type APIRequestInit = RequestInit & {
+  companyId?: string | null;
+};
+
+export type MembershipSummary = {
+  company_id: string;
+  role: string;
+  status: string;
+};
+
+export interface SandboxFixtureSummary {
+  fixture_id: string;
+  name: string;
+  description: string;
+  template_id: string;
+  mic_id: string;
+  mic_name: string;
+  shop_id: string;
+  time_range_start_unix: number;
+  time_range_end_unix: number;
+  expected_terminal_status: string;
+}
+
+export interface SandboxStatusResponse {
+  root_company_id: string;
+  current_company_id: string;
+  current_environment: "production" | "sandbox";
+  provisioned: boolean;
+  sandbox_company_id?: string;
+  sandbox_display_name?: string;
+  sandbox_fixture_version?: string;
+  fixtures: SandboxFixtureSummary[];
+}
+
+export interface WorkspaceWebhook {
+  webhook_id: string;
+  url: string;
+  secret_prefix: string;
+  label?: string;
+  enabled: boolean;
+  created_at_unix: number;
+  created_by?: string;
+  consecutive_failures: number;
+  last_delivered_at_unix?: number;
+}
+
+export interface WorkspaceWebhookSecretResponse {
+  webhook_id: string;
+  signing_secret: string;
+  secret_prefix: string;
+}
+
+export interface WorkspaceWebhookDelivery {
+  delivery_id: string;
+  event_id: string;
+  event_type: string;
+  status: string;
+  attempts: number;
+  created_at_unix: number;
+  last_response_status?: number;
+  last_error?: string;
+  next_attempt_at_unix?: number;
+  last_attempt_at_unix?: number;
+}
+
+export interface WorkspaceWebhookQueuedResponse {
+  status: string;
+  delivery_id: string;
+}
+
+export function getSelectedCompanyId(): string {
+  if (typeof window === "undefined") return "";
+  return localStorage.getItem(SELECTED_COMPANY_STORAGE_KEY) ?? "";
+}
+
+export function setSelectedCompanyId(companyId: string) {
+  if (typeof window === "undefined") return;
+  if (!companyId) {
+    localStorage.removeItem(SELECTED_COMPANY_STORAGE_KEY);
+    return;
+  }
+  localStorage.setItem(SELECTED_COMPANY_STORAGE_KEY, companyId);
+}
+
+export function pickActiveCompanyId(memberships: MembershipSummary[] | undefined | null): string {
+  const activeMemberships = (memberships ?? []).filter((membership) => membership.status === "active");
+  if (activeMemberships.length === 0) return "";
+  const selected = getSelectedCompanyId();
+  if (selected && activeMemberships.some((membership) => membership.company_id === selected)) {
+    return selected;
+  }
+  return activeMemberships[0]?.company_id ?? "";
+}
+
 async function getAuthHeader(): Promise<Record<string, string>> {
   const user = auth?.currentUser;
   if (!user) throw new Error("Not authenticated");
@@ -29,15 +125,18 @@ async function getAuthHeader(): Promise<Record<string, string>> {
 
 export async function apiFetch<T>(
   path: string,
-  opts?: RequestInit
+  opts?: APIRequestInit
 ): Promise<T> {
+  const { companyId, headers: requestHeaders, ...requestInit } = opts ?? {};
   const headers = await getAuthHeader();
+  const selectedCompanyId = companyId === undefined ? getSelectedCompanyId() : (companyId ?? "");
   const res = await fetch(`${API_BASE}/v2/dashboard${path}`, {
-    ...opts,
+    ...requestInit,
     headers: {
       "Content-Type": "application/json",
       ...headers,
-      ...opts?.headers,
+      ...(selectedCompanyId ? { "X-Company-ID": selectedCompanyId } : {}),
+      ...requestHeaders,
     },
   });
   if (!res.ok) {
@@ -62,15 +161,18 @@ export async function apiFetch<T>(
 
 export async function entFetch<T>(
   path: string,
-  opts?: RequestInit
+  opts?: APIRequestInit
 ): Promise<T> {
+  const { companyId, headers: requestHeaders, ...requestInit } = opts ?? {};
   const headers = await getAuthHeader();
+  const selectedCompanyId = companyId === undefined ? getSelectedCompanyId() : (companyId ?? "");
   const res = await fetch(`${API_BASE}${path}`, {
-    ...opts,
+    ...requestInit,
     headers: {
       "Content-Type": "application/json",
       ...headers,
-      ...opts?.headers,
+      ...(selectedCompanyId ? { "X-Company-ID": selectedCompanyId } : {}),
+      ...requestHeaders,
     },
   });
   if (!res.ok) {
@@ -92,7 +194,7 @@ export interface WhoamiResponse {
   uid: string;
   email: string;
   display_name: string;
-  memberships: Array<{ company_id: string; role: string; status: string }>;
+  memberships: MembershipSummary[];
 }
 
 export async function whoami(): Promise<WhoamiResponse | null> {
@@ -589,6 +691,54 @@ export async function generateAPIKey(): Promise<string> {
 export async function rotateAPIKey(): Promise<string> {
   const res = await apiFetch<{ api_key: string }>("/settings/api-key/rotate", { method: "POST" });
   return res.api_key;
+}
+
+export async function getSandboxStatus(companyId?: string): Promise<SandboxStatusResponse> {
+  return apiFetch<SandboxStatusResponse>("/sandbox", companyId ? { companyId } : undefined);
+}
+
+export async function provisionSandboxWorkspace(): Promise<SandboxStatusResponse> {
+  return apiFetch<SandboxStatusResponse>("/sandbox/provision", { method: "POST" });
+}
+
+export async function listWorkspaceWebhooks(companyId?: string): Promise<WorkspaceWebhook[]> {
+  return apiFetch<WorkspaceWebhook[]>("/webhooks", companyId ? { companyId } : undefined);
+}
+
+export async function createWorkspaceWebhook(url: string, label: string): Promise<WorkspaceWebhookSecretResponse> {
+  return apiFetch<WorkspaceWebhookSecretResponse>("/webhooks", {
+    method: "POST",
+    body: JSON.stringify({ url, label }),
+  });
+}
+
+export async function updateWorkspaceWebhook(webhookId: string, updates: { url?: string; label?: string; enabled?: boolean }): Promise<void> {
+  await apiFetch(`/webhooks/${webhookId}`, {
+    method: "PUT",
+    body: JSON.stringify(updates),
+  });
+}
+
+export async function deleteWorkspaceWebhook(webhookId: string): Promise<void> {
+  await apiFetch(`/webhooks/${webhookId}`, { method: "DELETE" });
+}
+
+export async function rotateWorkspaceWebhookSecret(webhookId: string): Promise<WorkspaceWebhookSecretResponse> {
+  return apiFetch<WorkspaceWebhookSecretResponse>(`/webhooks/${webhookId}/rotate-secret`, {
+    method: "POST",
+  });
+}
+
+export async function sendWorkspaceWebhookTest(webhookId: string): Promise<WorkspaceWebhookQueuedResponse> {
+  return apiFetch<WorkspaceWebhookQueuedResponse>(`/webhooks/${webhookId}/test`, { method: "POST" });
+}
+
+export async function listWorkspaceWebhookDeliveries(webhookId: string): Promise<WorkspaceWebhookDelivery[]> {
+  return apiFetch<WorkspaceWebhookDelivery[]>(`/webhooks/${webhookId}/deliveries`);
+}
+
+export async function retryWorkspaceWebhookDelivery(deliveryId: string): Promise<void> {
+  await apiFetch(`/webhook-deliveries/${deliveryId}/retry`, { method: "POST" });
 }
 
 export async function enableMic(companyId: string, micId: string): Promise<unknown> {
