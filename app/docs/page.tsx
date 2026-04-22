@@ -426,7 +426,7 @@ const sandboxCreateJobExample = `curl -X POST \\
     "instructions": "Return the deterministic generic success fixture."
   }'`;
 
-const sandboxStarterEnvExample = `KENSO_API_BASE=http://localhost:9090
+const sandboxStarterEnvExample = `KENSO_API_BASE=https://audio.knownsense.ai
 KENSO_API_KEY=ks_sandbox_...
 KENSO_WEBHOOK_SECRET=whsec_...
 KENSO_WEBHOOK_EVENT_LOG=./data/received_events.jsonl
@@ -434,7 +434,8 @@ KENSO_WEBHOOK_HOST=127.0.0.1
 KENSO_WEBHOOK_PORT=8787
 KENSO_WEBHOOK_PATH=/webhooks/knownsense`;
 
-const sandboxStarterSetupExample = `cd examples/enterprise_sandbox_python
+const sandboxStarterSetupExample = `git clone https://github.com/KnownSenseAI/knownsense-enterprise-sandbox-python.git
+cd knownsense-enterprise-sandbox-python
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -978,8 +979,15 @@ export default function DeveloperDocsPage() {
           <SectionShell id="starter-kit" eyebrow="Starter Project" title="Use the official Python sandbox starter for integration testing">
             <p className="max-w-3xl text-sm leading-7 text-muted-foreground">
               The official reference project is{" "}
-              <code className="rounded bg-background px-1.5 py-0.5 text-foreground">examples/enterprise_sandbox_python</code>.
-              Use it before writing your own production client. It already covers the parts of the integration that
+              <a
+                href="https://github.com/KnownSenseAI/knownsense-enterprise-sandbox-python"
+                target="_blank"
+                rel="noreferrer"
+                className="rounded bg-background px-1.5 py-0.5 text-foreground underline decoration-border underline-offset-4"
+              >
+                KnownSenseAI/knownsense-enterprise-sandbox-python
+              </a>
+              . Use it before writing your own production client. It already covers the parts of the integration that
               usually fail first: sandbox key authentication, webhook signature verification, ngrok callback plumbing,
               idempotent create-job requests, and deterministic fixture validation.
             </p>
