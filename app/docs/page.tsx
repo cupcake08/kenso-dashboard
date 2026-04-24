@@ -380,6 +380,7 @@ const errorResponseExample = `{
 const sandboxFixturesExample = `[
   {
     "fixture_id": "generic_success",
+    "mode": "deterministic",
     "name": "Generic analysis success",
     "template_id": "generic.analysis.v1",
     "mic_id": "sbx_generic_front_counter",
@@ -391,6 +392,7 @@ const sandboxFixturesExample = `[
   },
   {
     "fixture_id": "verification_success",
+    "mode": "deterministic",
     "name": "Verification + generic success",
     "template_id": "verification_plus_generic.v1",
     "mic_id": "sbx_verification_counter",
@@ -402,6 +404,7 @@ const sandboxFixturesExample = `[
   },
   {
     "fixture_id": "verification_refunded",
+    "mode": "deterministic",
     "name": "Verification refunded terminal state",
     "template_id": "verification.generic.v1",
     "mic_id": "sbx_failure_lane",
@@ -480,6 +483,40 @@ python sandbox_client.py run-smoke-suite \\
   --verify-webhooks \\
   --webhook-timeout-seconds 120`;
 
+const sandboxStarterLiveAudioExample = `source .venv/bin/activate
+
+# Uses the included sample: samples/bus_station_test.m4a
+# Add --wait-webhook when your local receiver + ngrok are running.
+python sandbox_client.py create-from-live-audio \\
+  --file ./samples/bus_station_test.m4a \\
+  --template-id generic.analysis.v1 \\
+  --wait-webhook \\
+  --poll`;
+
+const sandboxLiveAudioExpectedExample = `{
+  "job_id": "job_...",
+  "environment": "sandbox",
+  "template_id": "generic.analysis.v1",
+  "mic_names": ["bus_station_test"],
+  "status": "completed",
+  "estimated_credits": 2,
+  "actual_credits": 2,
+  "actual_audio_duration_ms": 72917,
+  "result": {
+    "core_analysis": {
+      "findings": [],
+      "highlights": [],
+      "recommendations": [],
+      "summary": "..."
+    }
+  },
+  "audio_artifact": {
+    "status": "ready",
+    "download_url": "https://storage.googleapis.com/...",
+    "expires_at_unix": 1777016347
+  }
+}`;
+
 const sandboxStarterFirstChecksExample = `python sandbox_client.py show-config
 python sandbox_client.py list-fixtures
 
@@ -531,11 +568,23 @@ const endpoints = [
     path: "/api/v1/analysis/sandbox/fixtures",
     anchor: "endpoint-get-sandbox-fixtures",
     title: "List sandbox fixtures",
-    detail: "Available only for sandbox API keys. Returns the seeded fixture windows, mic IDs, and expected terminal outcomes.",
+    detail: "Available only for sandbox API keys. Returns seeded deterministic fixtures plus any uploaded live-audio sandbox windows.",
     notes: [
       "Requires a sandbox-scoped X-API-Key.",
       "Use this to drive automated smoke tests without hardcoding fixture windows into your client.",
       "Production API keys receive 404 for this endpoint.",
+    ],
+  },
+  {
+    method: "POST",
+    path: "/api/v1/analysis/sandbox/audio",
+    anchor: "endpoint-post-sandbox-audio",
+    title: "Upload sandbox audio",
+    detail: "Upload one audio file into the sandbox workspace to test the live analysis path without hardware.",
+    notes: [
+      "Requires a sandbox-scoped X-API-Key.",
+      "Returns the generated mic_id and exact time_range_*_unix values for the normal create-job API.",
+      "Sandbox job history and webhooks stay isolated, but the later live-audio analysis run consumes production credits.",
     ],
   },
   {
@@ -970,24 +1019,29 @@ export default function DeveloperDocsPage() {
           <SectionShell id="sandbox" eyebrow="Sandbox" title="Use the hosted sandbox before going live">
             <p className="max-w-3xl text-sm leading-7 text-muted-foreground">
               The hosted sandbox uses the same API origin and public contract as production, but it is isolated behind
-              sandbox-scoped API keys, fake credits, deterministic results, and seeded fixture windows. Provision the
-              sandbox workspace from dashboard settings, switch into that workspace, then generate sandbox keys and
-              configure sandbox-only webhook endpoints.
+              sandbox-scoped API keys and sandbox-only webhook endpoints. It now has two testing modes: seeded
+              deterministic fixtures for smoke tests, and uploaded live-audio windows for live-analysis validation
+              without hardware. Live-audio sandbox jobs stay operationally isolated in sandbox, but they bill against
+              the root production company credit balance.
             </p>
 
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               {[
                 {
                   title: "Same host, different keys",
                   body: "Keep your client base URL unchanged. Switching from sandbox to production is only a key rotation and fixture replacement exercise.",
                 },
                 {
-                  title: "Deterministic payloads",
-                  body: "The sandbox does not call live Gemini models. Each seeded window returns a stable terminal result so retries, parsers, and webhooks stay predictable.",
+                  title: "Seeded fixture mode",
+                  body: "Use GET /sandbox/fixtures plus create-from-fixture when you need predictable completed and refunded terminal states for parser and webhook smoke tests.",
                 },
                 {
-                  title: "Real callback path",
-                  body: "Sandbox jobs still create real webhook deliveries and replay entries, so you can validate signatures, retries, and idempotent receivers against a sandbox-only endpoint.",
+                  title: "Live-audio mode",
+                  body: "Use the starter project's create-from-live-audio command when you want the live analysis path without deploying a hardware mic.",
+                },
+                {
+                  title: "Sandbox callbacks, production billing",
+                  body: "Sandbox webhooks, job history, and test data remain isolated. But live-audio sandbox analysis runs still check the root production subscription and deduct real production credits.",
                 },
               ].map((item) => (
                 <div key={item.title} className="rounded-[1.2rem] border border-border/70 bg-background/45 p-5">
@@ -999,6 +1053,30 @@ export default function DeveloperDocsPage() {
 
             <CodeExample title="GET /api/v1/analysis/sandbox/fixtures" language="json" code={sandboxFixturesExample} maxHeight="20rem" />
             <CodeExample title="Create a seeded sandbox job" language="bash" code={sandboxCreateJobExample} maxHeight="14rem" />
+
+            <div className="grid gap-4 xl:grid-cols-2">
+              <div className="rounded-[1.2rem] border border-border/70 bg-background/45 p-5">
+                <p className="text-sm font-semibold text-foreground">Exact live-audio sandbox flow</p>
+                <ol className="mt-3 space-y-2 text-sm leading-6 text-muted-foreground">
+                  <li>1. Use a sandbox API key.</li>
+                  <li>2. Run <code className="rounded bg-card px-1.5 py-0.5 text-foreground">create-from-live-audio</code> from the Python starter with a file up to 15 minutes.</li>
+                  <li>3. The starter uploads the clip, creates the analysis job with the returned sandbox mic/time window, then waits for webhook and/or polling if requested.</li>
+                  <li>4. A completed result proves API auth, upload, live analysis, terminal webhook delivery, and polling response parsing.</li>
+                  <li>5. Do not reuse the uploaded mic/time window; live-audio sandbox windows are one-time-use.</li>
+                </ol>
+              </div>
+              <div className="rounded-[1.2rem] border border-border/70 bg-background/45 p-5">
+                <p className="text-sm font-semibold text-foreground">What the backend actually does</p>
+                <ul className="mt-3 space-y-2 text-sm leading-6 text-muted-foreground">
+                  <li>Stores the uploaded clip in sandbox storage and creates a real sandbox <code className="rounded bg-card px-1.5 py-0.5 text-foreground">audio_segments</code> record.</li>
+                  <li>Creates a sandbox live-audio window so the normal create-job API can consume it safely.</li>
+                  <li>Runs the later job through the live analysis pipeline, not the deterministic fixture shortcut.</li>
+                  <li>Keeps sandbox job history and sandbox webhook isolation.</li>
+                  <li>Uses the root production company for subscription checks and credit deduction on that live-audio analysis run.</li>
+                  <li>Deletes the raw uploaded source after the job reaches a terminal state, and expires unused uploads after 1 hour.</li>
+                </ul>
+              </div>
+            </div>
           </SectionShell>
 
           <SectionShell id="starter-kit" eyebrow="Starter Project" title="Use the official Python sandbox starter for integration testing">
@@ -1014,7 +1092,9 @@ export default function DeveloperDocsPage() {
               </a>
               . Use it before writing your own production client. It already covers the parts of the integration that
               usually fail first: sandbox key authentication, webhook signature verification, ngrok callback plumbing,
-              idempotent create-job requests, and deterministic fixture validation.
+              idempotent create-job requests, and deterministic fixture validation. After those pass, run the included
+              live-audio command with the sample audio to validate the live analysis backend path before switching to
+              production credentials.
             </p>
 
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -1094,7 +1174,7 @@ export default function DeveloperDocsPage() {
 
             <CodeTabs
               title="Recommended starter-project test commands"
-              description="Run the auth checks first, then use these two flows before moving to production credentials."
+              description="Run the auth checks first, then use these flows before moving to production credentials."
               maxHeight="20rem"
               tabs={[
                 {
@@ -1113,8 +1193,35 @@ export default function DeveloperDocsPage() {
                   note: "Covers refunded terminal state, polling fallback, generic success, verification success, and webhook verification.",
                   code: sandboxStarterSmokeSuiteExample,
                 },
+                {
+                  id: "starter-live-audio",
+                  label: "Live Audio",
+                  language: "bash",
+                  title: "Upload sample audio and run live analysis",
+                  note: "Uses samples/bus_station_test.m4a. This consumes production credits through the root company even though job history and webhooks stay sandbox-scoped.",
+                  code: sandboxStarterLiveAudioExample,
+                },
               ]}
             />
+
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+              <div className="rounded-[1.2rem] border border-border/70 bg-background/45 p-5">
+                <p className="text-sm font-semibold text-foreground">Real-audio sandbox constraints</p>
+                <ul className="mt-3 space-y-2 text-sm leading-6 text-muted-foreground">
+                  <li>Use files up to 15 minutes. Longer uploads are rejected with <code className="rounded bg-card px-1.5 py-0.5 text-foreground">request/invalid_sandbox_audio</code>.</li>
+                  <li>Supported formats include wav, webm, ogg, opus, mp3, m4a/mp4, aac, and flac.</li>
+                  <li>The included sample is <code className="rounded bg-card px-1.5 py-0.5 text-foreground">samples/bus_station_test.m4a</code>.</li>
+                  <li>The full sample response is in <code className="rounded bg-card px-1.5 py-0.5 text-foreground">examples/live_audio_completed_response.json</code>.</li>
+                  <li>The signed <code className="rounded bg-card px-1.5 py-0.5 text-foreground">audio_artifact.download_url</code> expires; fetch the job again for a fresh URL.</li>
+                </ul>
+              </div>
+              <CodeExample
+                title="Expected live-audio result shape"
+                language="json"
+                code={sandboxLiveAudioExpectedExample}
+                maxHeight="20rem"
+              />
+            </div>
 
             <div className="rounded-[1.2rem] border border-amber-500/30 bg-amber-500/[0.08] p-5">
               <p className="text-sm font-semibold text-foreground">Common Issues During Testing</p>
@@ -1152,6 +1259,18 @@ export default function DeveloperDocsPage() {
                     title: "Repeated tests reuse old results",
                     body: "Use --avoid-cache on repeated sandbox runs so you force a fresh deterministic job instead of reading a prior cached response.",
                   },
+                  {
+                    title: "Live-audio sandbox still spends production credits",
+                    body: "That is intentional. Uploaded sandbox audio keeps sandbox webhooks and sandbox job history, but the actual analysis run is billed against the root production company so the real-model path is not a free lane.",
+                  },
+                  {
+                    title: "Live-audio upload is invalid",
+                    body: "Use a supported audio format and keep the file at 15 minutes or less. For a known-good test, run the starter against samples/bus_station_test.m4a first.",
+                  },
+                  {
+                    title: "Live-audio window is expired or already used",
+                    body: "Each uploaded live-audio sandbox window expires after 1 hour and can be consumed by only one job. Upload the file again for a fresh window.",
+                  },
                 ].map((item) => (
                   <div key={item.title} className="rounded-[1rem] border border-border/60 bg-background/40 p-4">
                     <p className="text-sm font-semibold text-foreground">{item.title}</p>
@@ -1167,6 +1286,7 @@ export default function DeveloperDocsPage() {
                 <li>A working sandbox API key and sandbox-only webhook endpoint.</li>
                 <li>A receiver that verifies KnownSense signatures and logs raw callback payloads.</li>
                 <li>A passing smoke suite across completed and refunded job paths.</li>
+                <li>One passing live-audio sandbox run if you want real analysis output before production.</li>
                 <li>Confidence that moving to production is mainly a key rotation plus replacing seeded fixtures with real mic IDs and time windows.</li>
               </ul>
             </div>
