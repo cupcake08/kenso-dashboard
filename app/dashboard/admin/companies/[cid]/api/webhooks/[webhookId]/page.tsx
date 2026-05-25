@@ -15,8 +15,9 @@ import {
   adminFetch, setAdminKey, hasAdminKey,
   listWebhooks, updateWebhook, deleteWebhook,
   rotateWebhookSecret, sendTestEvent, listDeliveries, retryDelivery,
+  webhookEventOptions, defaultWebhookEventTypes,
 } from "@/lib/admin-api";
-import type { WebhookItem, CreateWebhookResponse, DeliveryItem } from "@/lib/admin-api";
+import type { WebhookEventType, WebhookItem, CreateWebhookResponse, DeliveryItem } from "@/lib/admin-api";
 import { toast } from "sonner";
 
 /* ── Helpers ── */
@@ -37,6 +38,21 @@ function statusColor(status: string): string {
     case "failed_permanently": return "bg-destructive/10 text-destructive";
     default: return "bg-muted text-muted-foreground";
   }
+}
+
+function toggleWebhookEventType(selected: WebhookEventType[], eventType: WebhookEventType): WebhookEventType[] {
+  return selected.includes(eventType)
+    ? selected.filter((item) => item !== eventType)
+    : [...selected, eventType];
+}
+
+function effectiveWebhookEventTypes(eventTypes?: WebhookEventType[]): WebhookEventType[] {
+  return eventTypes && eventTypes.length > 0 ? eventTypes : defaultWebhookEventTypes;
+}
+
+function sameWebhookEventTypes(a: WebhookEventType[], b: WebhookEventType[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((eventType) => b.includes(eventType));
 }
 
 /* ── Admin Key Gate ── */
@@ -238,6 +254,7 @@ export default function WebhookDetailPage() {
   const [editUrl, setEditUrl] = useState("");
   const [editLabel, setEditLabel] = useState("");
   const [editEnabled, setEditEnabled] = useState(false);
+  const [editEventTypes, setEditEventTypes] = useState<WebhookEventType[]>(defaultWebhookEventTypes);
   const [dirty, setDirty] = useState(false);
 
   // Modals
@@ -263,6 +280,7 @@ export default function WebhookDetailPage() {
         setEditUrl(found.url);
         setEditLabel(found.label);
         setEditEnabled(found.enabled);
+        setEditEventTypes(effectiveWebhookEventTypes(found.event_types));
       }
       setDeliveries(dels ?? []);
     } catch (err) {
@@ -282,8 +300,13 @@ export default function WebhookDetailPage() {
 
   useEffect(() => {
     if (!webhook) return;
-    setDirty(editUrl !== webhook.url || editLabel !== webhook.label || editEnabled !== webhook.enabled);
-  }, [editUrl, editLabel, editEnabled, webhook]);
+    setDirty(
+      editUrl !== webhook.url ||
+      editLabel !== webhook.label ||
+      editEnabled !== webhook.enabled ||
+      !sameWebhookEventTypes(editEventTypes, effectiveWebhookEventTypes(webhook.event_types)),
+    );
+  }, [editUrl, editLabel, editEnabled, editEventTypes, webhook]);
 
   const handleSave = async () => {
     if (!webhook) return;
@@ -293,6 +316,7 @@ export default function WebhookDetailPage() {
         url: editUrl,
         label: editLabel,
         enabled: editEnabled,
+        event_types: editEventTypes,
       });
       toast.success("Webhook updated");
       await loadData();
@@ -397,10 +421,10 @@ export default function WebhookDetailPage() {
                   <span className="text-xs font-mono text-muted-foreground">{webhookId}</span>
                 </div>
                 <p className="text-sm text-muted-foreground font-mono">{webhook.url}</p>
-                <div className="flex items-center gap-2 flex-wrap">
-                  {webhook.enabled ? (
-                    <span className="inline-flex items-center gap-1 text-[0.6875rem] px-2 py-0.5 rounded-full bg-status-online/10 text-status-online">
-                      <CheckCircle2 className="h-3 w-3" /> Active
+              <div className="flex items-center gap-2 flex-wrap">
+                {webhook.enabled ? (
+                  <span className="inline-flex items-center gap-1 text-[0.6875rem] px-2 py-0.5 rounded-full bg-status-online/10 text-status-online">
+                    <CheckCircle2 className="h-3 w-3" /> Active
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1 text-[0.6875rem] px-2 py-0.5 rounded-full bg-destructive/10 text-destructive">
@@ -412,6 +436,13 @@ export default function WebhookDetailPage() {
                       {webhook.consecutive_failures} consecutive failures
                     </span>
                   )}
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {effectiveWebhookEventTypes(webhook.event_types).map((eventType) => (
+                    <code key={eventType} className="rounded-full border border-border/60 bg-background/60 px-2 py-0.5 text-[0.68rem] text-muted-foreground">
+                      {eventType}
+                    </code>
+                  ))}
                 </div>
               </div>
             </div>
@@ -449,8 +480,43 @@ export default function WebhookDetailPage() {
                   <span className="text-sm text-muted-foreground">Enabled</span>
                 </label>
               </div>
+              <div className="rounded-xl border border-border/70 bg-card/35 p-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-foreground">Event subscriptions</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">Webhook test events can always be sent to this endpoint.</p>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => setEditEventTypes(defaultWebhookEventTypes)}>
+                      Job events
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => setEditEventTypes(["mic.offline", "mic.online"])}>
+                      MIC health only
+                    </Button>
+                  </div>
+                </div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {webhookEventOptions.map((option) => (
+                    <label key={option.value} className="flex cursor-pointer items-start gap-2 rounded-lg border border-border/60 bg-background/45 px-3 py-2">
+                      <input
+                        type="checkbox"
+                        checked={editEventTypes.includes(option.value)}
+                        onChange={() => setEditEventTypes((current) => toggleWebhookEventType(current, option.value))}
+                        className="mt-1 h-4 w-4 rounded border-border"
+                      />
+                      <span>
+                        <span className="block text-xs font-medium text-foreground">{option.label}</span>
+                        <span className="block text-[0.68rem] leading-4 text-muted-foreground">{option.description}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                {editEventTypes.length === 0 && (
+                  <p className="mt-2 text-xs text-amber-500">Select at least one event type before saving.</p>
+                )}
+              </div>
               <div className="flex items-center gap-2">
-                <Button size="sm" onClick={handleSave} disabled={!dirty || saving}>
+                <Button size="sm" onClick={handleSave} disabled={!dirty || saving || editEventTypes.length === 0}>
                   {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save Changes"}
                 </Button>
               </div>

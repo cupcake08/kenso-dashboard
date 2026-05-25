@@ -15,8 +15,9 @@ import {
   adminFetch, setAdminKey, hasAdminKey,
   listWebhooks, createWebhook, updateWebhook, deleteWebhook,
   rotateWebhookSecret, sendTestEvent,
+  webhookEventOptions, defaultWebhookEventTypes,
 } from "@/lib/admin-api";
-import type { WebhookItem, CreateWebhookResponse } from "@/lib/admin-api";
+import type { WebhookEventType, WebhookItem, CreateWebhookResponse } from "@/lib/admin-api";
 import { toast } from "sonner";
 
 /* ── Helpers ── */
@@ -31,6 +32,16 @@ function formatDate(unix: number): string {
 function truncateUrl(url: string, max = 50): string {
   if (url.length <= max) return url;
   return url.slice(0, max) + "...";
+}
+
+function toggleWebhookEventType(selected: WebhookEventType[], eventType: WebhookEventType): WebhookEventType[] {
+  return selected.includes(eventType)
+    ? selected.filter((item) => item !== eventType)
+    : [...selected, eventType];
+}
+
+function effectiveWebhookEventTypes(eventTypes?: WebhookEventType[]): WebhookEventType[] {
+  return eventTypes && eventTypes.length > 0 ? eventTypes : defaultWebhookEventTypes;
 }
 
 /* ── Admin Key Gate ── */
@@ -201,12 +212,13 @@ function CreateWebhookModal({
   onCancel,
   loading,
 }: {
-  onCreate: (url: string, label: string) => void;
+  onCreate: (url: string, label: string, eventTypes: WebhookEventType[]) => void;
   onCancel: () => void;
   loading: boolean;
 }) {
   const [url, setUrl] = useState("");
   const [label, setLabel] = useState("");
+  const [eventTypes, setEventTypes] = useState<WebhookEventType[]>(defaultWebhookEventTypes);
   const [error, setError] = useState("");
 
   const isHttps = url.startsWith("https://");
@@ -219,8 +231,12 @@ function CreateWebhookModal({
       setError("URL must start with http:// or https://");
       return;
     }
+    if (eventTypes.length === 0) {
+      setError("Select at least one event type");
+      return;
+    }
     setError("");
-    onCreate(url.trim(), label.trim());
+    onCreate(url.trim(), label.trim(), eventTypes);
   };
 
   return (
@@ -272,6 +288,30 @@ function CreateWebhookModal({
               onKeyDown={(e) => e.key === "Enter" && url.trim() && handleSubmit()}
             />
           </div>
+          <div className="rounded-xl border border-border/70 bg-card/40 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <label className="text-xs font-medium text-muted-foreground">Event subscriptions</label>
+              <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => setEventTypes(["mic.offline", "mic.online"])}>
+                MIC health only
+              </Button>
+            </div>
+            <div className="mt-2 grid gap-2">
+              {webhookEventOptions.map((option) => (
+                <label key={option.value} className="flex cursor-pointer items-start gap-2 rounded-lg border border-border/60 bg-background/45 px-3 py-2">
+                  <input
+                    type="checkbox"
+                    checked={eventTypes.includes(option.value)}
+                    onChange={() => setEventTypes((current) => toggleWebhookEventType(current, option.value))}
+                    className="mt-1 h-4 w-4 rounded border-border"
+                  />
+                  <span>
+                    <span className="block text-xs font-medium text-foreground">{option.label}</span>
+                    <span className="block text-[0.68rem] leading-4 text-muted-foreground">{option.description}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
         </div>
 
         {error && <p className="text-xs text-destructive">{error}</p>}
@@ -280,7 +320,7 @@ function CreateWebhookModal({
           <Button variant="outline" className="flex-1" onClick={onCancel} disabled={loading}>
             Cancel
           </Button>
-          <Button className="flex-1" onClick={handleSubmit} disabled={!url.trim() || loading}>
+          <Button className="flex-1" onClick={handleSubmit} disabled={!url.trim() || eventTypes.length === 0 || loading}>
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Create Webhook"}
           </Button>
         </div>
@@ -427,6 +467,13 @@ function WebhookCard({
             <p className="text-xs text-muted-foreground/50 mt-0.5">
               Secret: <span className="font-mono">{webhook.secret_prefix}...</span>
             </p>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {effectiveWebhookEventTypes(webhook.event_types).map((eventType) => (
+                <code key={eventType} className="rounded-full border border-border/60 bg-background/60 px-2 py-0.5 text-[0.66rem] text-muted-foreground">
+                  {eventType}
+                </code>
+              ))}
+            </div>
             <div className="flex items-center gap-3 mt-1.5 text-[0.6875rem] text-muted-foreground/50">
               <span>Created {formatDate(webhook.created_at_unix)}</span>
               {webhook.created_by && <span>by {webhook.created_by}</span>}
@@ -531,10 +578,10 @@ export default function WebhooksPage() {
     if (authed) loadWebhooks();
   }, [authed, loadWebhooks]);
 
-  const handleCreate = async (url: string, label: string) => {
+  const handleCreate = async (url: string, label: string, eventTypes: WebhookEventType[]) => {
     setCreating(true);
     try {
-      const res = await createWebhook(cid, url, label);
+      const res = await createWebhook(cid, url, label, eventTypes);
       setShowCreate(false);
       setRevealSecret(res);
       await loadWebhooks();

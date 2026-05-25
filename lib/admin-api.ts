@@ -122,12 +122,25 @@ export async function revokeAPIKey(cid: string, hash: string, reason: string): P
 
 /* ── Webhook admin types ── */
 
+export type WebhookEventType = "job.completed" | "job.failed" | "job.refunded" | "mic.offline" | "mic.online";
+
+export const webhookEventOptions: { value: WebhookEventType; label: string; description: string }[] = [
+  { value: "job.completed", label: "Job completed", description: "Analysis completed successfully" },
+  { value: "job.failed", label: "Job failed", description: "Analysis ended with a failure" },
+  { value: "job.refunded", label: "Job refunded", description: "Analysis failed and credits were returned" },
+  { value: "mic.offline", label: "MIC offline", description: "Device connectivity dropped" },
+  { value: "mic.online", label: "MIC online", description: "Device connectivity recovered" },
+];
+
+export const defaultWebhookEventTypes: WebhookEventType[] = ["job.completed", "job.failed", "job.refunded"];
+
 export interface WebhookItem {
   webhook_id: string;
   url: string;
   secret_prefix: string;
   label: string;
   enabled: boolean;
+  event_types: WebhookEventType[];
   created_at_unix: number;
   created_by: string;
   consecutive_failures: number;
@@ -137,6 +150,7 @@ export interface CreateWebhookResponse {
   webhook_id: string;
   signing_secret: string;
   secret_prefix: string;
+  event_types?: WebhookEventType[];
 }
 
 export interface DeliveryItem {
@@ -157,14 +171,14 @@ export async function listWebhooks(cid: string): Promise<WebhookItem[]> {
   return adminFetch<WebhookItem[]>(`/v2/admin/companies/${cid}/webhooks`);
 }
 
-export async function createWebhook(cid: string, url: string, label: string): Promise<CreateWebhookResponse> {
+export async function createWebhook(cid: string, url: string, label: string, eventTypes: WebhookEventType[] = defaultWebhookEventTypes): Promise<CreateWebhookResponse> {
   return adminFetch<CreateWebhookResponse>(`/v2/admin/companies/${cid}/webhooks`, {
     method: "POST",
-    body: JSON.stringify({ url, label }),
+    body: JSON.stringify({ url, label, event_types: eventTypes }),
   });
 }
 
-export async function updateWebhook(cid: string, webhookId: string, updates: { url?: string; label?: string; enabled?: boolean }): Promise<void> {
+export async function updateWebhook(cid: string, webhookId: string, updates: { url?: string; label?: string; enabled?: boolean; event_types?: WebhookEventType[] }): Promise<void> {
   await adminFetch(`/v2/admin/companies/${cid}/webhooks/${webhookId}`, {
     method: "PUT",
     body: JSON.stringify(updates),

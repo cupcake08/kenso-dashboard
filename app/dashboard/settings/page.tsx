@@ -20,6 +20,9 @@ import {
   listWorkspaceWebhookDeliveries,
   retryWorkspaceWebhookDelivery,
   setSelectedCompanyId,
+  webhookEventOptions,
+  defaultWebhookEventTypes,
+  micHealthWebhookEventTypes,
 } from "@/lib/api";
 import type { Device, PlanResponse, RawDevice, RawPlanResponse, UsageResponse } from "@/types/api";
 import { useApi } from "@/hooks/use-api";
@@ -30,7 +33,7 @@ import { Loader2, Copy, RefreshCw, Key, User, CreditCard, Cpu, Check, AlertCircl
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import type { User as FirebaseUser } from "firebase/auth";
-import type { SandboxStatusResponse, WorkspaceWebhook, WorkspaceWebhookDelivery, WorkspaceWebhookSecretResponse } from "@/lib/api";
+import type { SandboxStatusResponse, WebhookEventType, WorkspaceWebhook, WorkspaceWebhookDelivery, WorkspaceWebhookSecretResponse } from "@/lib/api";
 
 const VERTICAL_LABELS: Record<string, string> = {
   restaurant: "Restaurant",
@@ -74,6 +77,16 @@ const fadeUp = {
 };
 
 const TRANSIENT_DELIVERY_STATUSES = new Set(["pending", "in_flight", "retrying"]);
+
+function toggleWebhookEventType(selected: WebhookEventType[], eventType: WebhookEventType): WebhookEventType[] {
+  return selected.includes(eventType)
+    ? selected.filter((item) => item !== eventType)
+    : [...selected, eventType];
+}
+
+function effectiveWebhookEventTypes(eventTypes?: WebhookEventType[]): WebhookEventType[] {
+  return eventTypes && eventTypes.length > 0 ? eventTypes : defaultWebhookEventTypes;
+}
 
 function isTransientDelivery(status: string): boolean {
   return TRANSIENT_DELIVERY_STATUSES.has(status);
@@ -139,6 +152,7 @@ export default function SettingsPage() {
   const [webhookActionId, setWebhookActionId] = useState<string | null>(null);
   const [webhookUrl, setWebhookUrl] = useState("");
   const [webhookLabel, setWebhookLabel] = useState("");
+  const [webhookEventTypes, setWebhookEventTypes] = useState<WebhookEventType[]>(defaultWebhookEventTypes);
   const [webhookCreating, setWebhookCreating] = useState(false);
   const [revealedSecret, setRevealedSecret] = useState<WorkspaceWebhookSecretResponse | null>(null);
   const [deliveriesByWebhook, setDeliveriesByWebhook] = useState<Record<string, WorkspaceWebhookDelivery[]>>({});
@@ -709,14 +723,15 @@ export default function SettingsPage() {
               placeholder="Primary receiver"
             />
             <Button
-              disabled={webhookCreating || !webhookUrl.trim()}
+              disabled={webhookCreating || !webhookUrl.trim() || webhookEventTypes.length === 0}
               onClick={async () => {
                 setWebhookCreating(true);
                 try {
-                  const created = await createWorkspaceWebhook(webhookUrl.trim(), webhookLabel.trim());
+                  const created = await createWorkspaceWebhook(webhookUrl.trim(), webhookLabel.trim(), webhookEventTypes);
                   setRevealedSecret(created);
                   setWebhookUrl("");
                   setWebhookLabel("");
+                  setWebhookEventTypes(defaultWebhookEventTypes);
                   setWebhooks(await listWorkspaceWebhooks());
                   toast.success("Webhook created");
                 } catch (err) {
@@ -729,6 +744,46 @@ export default function SettingsPage() {
               {webhookCreating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Webhook className="h-4 w-4 mr-2" />}
               Add Webhook
             </Button>
+          </div>
+          <div className="mt-4 rounded-xl border border-border/70 bg-card/35 px-3 py-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-medium text-foreground">Event subscriptions</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Choose job results, MIC connectivity, or both. Test events can always be sent to this endpoint.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => setWebhookEventTypes(defaultWebhookEventTypes)}>
+                  Job events
+                </Button>
+                <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => setWebhookEventTypes(micHealthWebhookEventTypes)}>
+                  MIC health only
+                </Button>
+                <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => setWebhookEventTypes(webhookEventOptions.map((item) => item.value))}>
+                  All
+                </Button>
+              </div>
+            </div>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {webhookEventOptions.map((option) => (
+                <label key={option.value} className="flex cursor-pointer items-start gap-2 rounded-lg border border-border/60 bg-background/45 px-3 py-2 transition-colors hover:bg-muted/30">
+                  <input
+                    type="checkbox"
+                    checked={webhookEventTypes.includes(option.value)}
+                    onChange={() => setWebhookEventTypes((current) => toggleWebhookEventType(current, option.value))}
+                    className="mt-1 h-4 w-4 rounded border-border"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-xs font-medium text-foreground">{option.label}</span>
+                    <span className="block text-[0.68rem] leading-4 text-muted-foreground">{option.description}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+            {webhookEventTypes.length === 0 && (
+              <p className="mt-2 text-xs text-amber-300">Select at least one event type before adding the endpoint.</p>
+            )}
           </div>
         </div>
 
@@ -778,6 +833,16 @@ export default function SettingsPage() {
                         <code className="mt-1.5 block break-all text-[0.78rem] leading-relaxed text-foreground/85">
                           {webhook.url}
                         </code>
+                      </div>
+                      <div className="mt-3 rounded-xl border border-border/70 bg-background/70 px-3 py-3 shadow-[0_1px_0_rgba(255,255,255,0.025)_inset]">
+                        <p className="text-[0.625rem] font-medium uppercase tracking-[0.24em] text-muted-foreground/80">Events</p>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {effectiveWebhookEventTypes(webhook.event_types).map((eventType) => (
+                            <code key={eventType} className="rounded-full border border-border/60 bg-card px-2 py-1 text-[0.68rem] text-foreground/85">
+                              {eventType}
+                            </code>
+                          ))}
+                        </div>
                       </div>
                       <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground tabular-nums">
                         <span className="rounded-full border border-border/70 bg-background/55 px-2.5 py-1">

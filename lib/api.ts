@@ -56,12 +56,26 @@ export interface SandboxStatusResponse {
   fixtures: SandboxFixtureSummary[];
 }
 
+export type WebhookEventType = "job.completed" | "job.failed" | "job.refunded" | "mic.offline" | "mic.online";
+
+export const webhookEventOptions: { value: WebhookEventType; label: string; description: string }[] = [
+  { value: "job.completed", label: "Job completed", description: "Analysis completed successfully" },
+  { value: "job.failed", label: "Job failed", description: "Analysis ended with a failure" },
+  { value: "job.refunded", label: "Job refunded", description: "Analysis failed and credits were returned" },
+  { value: "mic.offline", label: "MIC offline", description: "Device connectivity dropped" },
+  { value: "mic.online", label: "MIC online", description: "Device connectivity recovered" },
+];
+
+export const defaultWebhookEventTypes: WebhookEventType[] = ["job.completed", "job.failed", "job.refunded"];
+export const micHealthWebhookEventTypes: WebhookEventType[] = ["mic.offline", "mic.online"];
+
 export interface WorkspaceWebhook {
   webhook_id: string;
   url: string;
   secret_prefix: string;
   label?: string;
   enabled: boolean;
+  event_types: WebhookEventType[];
   created_at_unix: number;
   created_by?: string;
   consecutive_failures: number;
@@ -72,6 +86,7 @@ export interface WorkspaceWebhookSecretResponse {
   webhook_id: string;
   signing_secret: string;
   secret_prefix: string;
+  event_types?: WebhookEventType[];
 }
 
 export interface WorkspaceWebhookDelivery {
@@ -733,14 +748,14 @@ export async function listWorkspaceWebhooks(companyId?: string): Promise<Workspa
   return apiFetch<WorkspaceWebhook[]>("/webhooks", companyId ? { companyId } : undefined);
 }
 
-export async function createWorkspaceWebhook(url: string, label: string): Promise<WorkspaceWebhookSecretResponse> {
+export async function createWorkspaceWebhook(url: string, label: string, eventTypes: WebhookEventType[] = defaultWebhookEventTypes): Promise<WorkspaceWebhookSecretResponse> {
   return apiFetch<WorkspaceWebhookSecretResponse>("/webhooks", {
     method: "POST",
-    body: JSON.stringify({ url, label }),
+    body: JSON.stringify({ url, label, event_types: eventTypes }),
   });
 }
 
-export async function updateWorkspaceWebhook(webhookId: string, updates: { url?: string; label?: string; enabled?: boolean }): Promise<void> {
+export async function updateWorkspaceWebhook(webhookId: string, updates: { url?: string; label?: string; enabled?: boolean; event_types?: WebhookEventType[] }): Promise<void> {
   await apiFetch(`/webhooks/${webhookId}`, {
     method: "PUT",
     body: JSON.stringify(updates),

@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = {
   title: "Developer Docs | KnownSense.AI",
-  description: "Integration documentation for external developers using the KnownSense Enterprise Analysis API on audio.knownsense.ai.",
+  description: "Integration documentation for external developers using the KnownSense Enterprise API on audio.knownsense.ai.",
 };
 
 const apiBaseUrl = "https://audio.knownsense.ai";
@@ -208,6 +208,39 @@ def wait_for_terminal_job(job_id: str):
 
         time.sleep(5)`;
 
+const micStatusCurl = `curl "${apiBaseUrl}/api/v1/mics/status" \\
+  -H "X-API-Key: ks_..."`;
+
+const micStatusExample = `{
+  "items": [
+    {
+      "mic_id": "mic_front_counter",
+      "name": "Front Counter",
+      "shop_id": "shop_pune_01",
+      "location_id": "loc_pune_01",
+      "status": "online",
+      "online": true,
+      "last_seen_unix": 1776764200,
+      "connection_source": "heartbeat",
+      "telemetry": {
+        "audio_level_db": -34.2,
+        "bitrate_kbps": 32,
+        "packet_loss_pct": 0,
+        "jitter_ms": 3,
+        "free_heap_kb": 108,
+        "wifi_rssi": -61,
+        "cpu_temp_c": 42.3
+      }
+    }
+  ]
+}`;
+
+const webhookSubscriptionExample = `{
+  "url": "https://example.com/webhooks/knownsense",
+  "label": "MIC health receiver",
+  "event_types": ["mic.offline", "mic.online"]
+}`;
+
 const templateListExample = `[
   {
     "template_id": "generic.analysis.v1",
@@ -307,6 +340,67 @@ const webhookPayloadExample = `{
         "verification": {
           "overall_verdict": "verified"
         }
+      }
+    }
+  }
+}`;
+
+const micOfflineWebhookExample = `{
+  "event_id": "evt_01hxyz124",
+  "event_type": "mic.offline",
+  "created_at_unix": 1776764300,
+  "company_id": "cmp_123",
+  "data": {
+    "object_type": "mic",
+    "object": {
+      "mic_id": "mic_front_counter",
+      "name": "Front Counter",
+      "shop_id": "shop_pune_01",
+      "location_id": "loc_pune_01",
+      "status": "offline",
+      "online": false,
+      "last_seen_unix": 1776764240,
+      "changed_at_unix": 1776764300,
+      "offline_reason": "ws_close",
+      "connection_source": "sfu_ws",
+      "telemetry": {
+        "audio_level_db": -38.5,
+        "bitrate_kbps": 0,
+        "packet_loss_pct": 0,
+        "jitter_ms": 0,
+        "free_heap_kb": 104,
+        "wifi_rssi": -67,
+        "cpu_temp_c": 43.1
+      }
+    }
+  }
+}`;
+
+const micOnlineWebhookExample = `{
+  "event_id": "evt_01hxyz125",
+  "event_type": "mic.online",
+  "created_at_unix": 1776764600,
+  "company_id": "cmp_123",
+  "data": {
+    "object_type": "mic",
+    "object": {
+      "mic_id": "mic_front_counter",
+      "name": "Front Counter",
+      "shop_id": "shop_pune_01",
+      "location_id": "loc_pune_01",
+      "status": "online",
+      "online": true,
+      "last_seen_unix": 1776764598,
+      "changed_at_unix": 1776764600,
+      "connection_source": "heartbeat",
+      "telemetry": {
+        "audio_level_db": -32.1,
+        "bitrate_kbps": 32,
+        "packet_loss_pct": 0,
+        "jitter_ms": 2,
+        "free_heap_kb": 111,
+        "wifi_rssi": -58,
+        "cpu_temp_c": 41.9
       }
     }
   }
@@ -527,6 +621,7 @@ python sandbox_client.py list-fixtures
 
 const sections = [
   { id: "overview", label: "Overview" },
+  { id: "mic-health", label: "MIC Health" },
   { id: "quickstart", label: "Quickstart" },
   { id: "sandbox", label: "Sandbox" },
   { id: "starter-kit", label: "Starter Project" },
@@ -539,6 +634,30 @@ const sections = [
 ] as const;
 
 const endpoints = [
+  {
+    method: "GET",
+    path: "/api/v1/mics/status",
+    anchor: "endpoint-get-mics-status",
+    title: "List MIC statuses",
+    detail: "Return all company MICs with live connectivity status, last seen time, connection source, and telemetry when available.",
+    notes: [
+      "Requires X-API-Key.",
+      "Returns 503 health/rtdb_unavailable when live presence data cannot be trusted.",
+      "Use this for polling-based health dashboards or recovery checks after missed webhook events.",
+    ],
+  },
+  {
+    method: "GET",
+    path: "/api/v1/mics/{mic_id}/status",
+    anchor: "endpoint-get-mic-status",
+    title: "Get MIC status",
+    detail: "Fetch health for one MIC. Missing linked presence returns status unknown with online false.",
+    notes: [
+      "Returns 404 when the MIC does not belong to the authenticated company.",
+      "Status values include online, offline, unknown, pending, and soft_deleted.",
+      "Use alongside mic.online and mic.offline webhooks for resilient monitoring.",
+    ],
+  },
   {
     method: "GET",
     path: "/api/v1/analysis/templates",
@@ -724,7 +843,7 @@ export default function DeveloperDocsPage() {
               <BadgeCheck className="h-3.5 w-3.5" />
               Developer Documentation
             </div>
-            <h1 className="mt-1 text-lg font-semibold text-foreground sm:text-xl">Enterprise Analysis API</h1>
+            <h1 className="mt-1 text-lg font-semibold text-foreground sm:text-xl">Enterprise API</h1>
           </div>
 
           <div className="flex items-center gap-2">
@@ -787,18 +906,18 @@ export default function DeveloperDocsPage() {
             <div className="grid gap-8 px-5 py-6 sm:px-7 sm:py-7 xl:grid-cols-[minmax(0,1fr)_19rem]">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-3">
-                  <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-primary">Enterprise Analysis API</p>
+                  <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-primary">Enterprise API</p>
                   <code className="rounded-full border border-border/70 bg-background/70 px-3 py-1.5 text-xs text-foreground">
-                    {apiBaseUrl}/api/v1/analysis
+                    {apiBaseUrl}/api/v1
                   </code>
                 </div>
                 <h2 className="mt-4 max-w-3xl text-balance text-[1.95rem] font-semibold tracking-tight text-foreground sm:text-[2.35rem]">
-                  Integration guide for asynchronous audio analysis
+                  Integration guide for MIC health and asynchronous audio analysis
                 </h2>
                 <p className="mt-4 max-w-3xl text-pretty text-sm leading-7 text-muted-foreground sm:text-[0.98rem]">
-                  Submit a bounded audio window, attach structured business context when needed, and retrieve a stable
-                  job envelope with a template-scoped result. The public contract is asynchronous by design and built
-                  for backend-to-backend integrations.
+                  Monitor MIC connectivity, subscribe to online and offline changes, submit bounded audio windows,
+                  and retrieve stable job envelopes with template-scoped results. The public contract is built for
+                  backend-to-backend integrations with polling and signed webhook delivery.
                 </p>
 
                 <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -817,8 +936,14 @@ export default function DeveloperDocsPage() {
                   <KeyValueCard
                     icon={Webhook}
                     label="Delivery"
-                    value="Polling or webhook"
-                    detail="Create a job once, then either poll by job ID or wait for a terminal webhook."
+                    value="Polling + webhooks"
+                    detail="Poll MIC and job endpoints, or receive signed job and MIC health events."
+                  />
+                  <KeyValueCard
+                    icon={ListTree}
+                    label="MIC health"
+                    value="Online/offline"
+                    detail="Track connection source, last seen timestamp, and device telemetry when available."
                   />
                   <KeyValueCard
                     icon={Clock3}
@@ -834,7 +959,8 @@ export default function DeveloperDocsPage() {
                 <div className="mt-4 space-y-3">
                   {[
                     ["Base URL", apiBaseUrl],
-                    ["Base path", "/api/v1/analysis"],
+                    ["Analysis path", "/api/v1/analysis"],
+                    ["MIC path", "/api/v1/mics"],
                     ["Idempotency", "Idempotency-Key"],
                     ["Trace", "X-Request-ID"],
                   ].map(([label, value]) => (
@@ -852,6 +978,11 @@ export default function DeveloperDocsPage() {
             <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_18rem]">
               <ol className="space-y-3">
               {[
+                {
+                  title: "Monitor MIC health",
+                  path: "GET /api/v1/mics/status",
+                  detail: "Use the polling endpoint for dashboards and recovery checks, or subscribe to MIC health webhooks.",
+                },
                 {
                   title: "Discover templates",
                   path: "GET /api/v1/analysis/templates",
@@ -905,6 +1036,33 @@ export default function DeveloperDocsPage() {
                 ))}
               </div>
             </div>
+          </SectionShell>
+
+          <SectionShell id="mic-health" eyebrow="MIC Health" title="Monitor device connectivity">
+            <p className="max-w-3xl text-sm leading-7 text-muted-foreground">
+              MIC health uses the same company-scoped API key as analysis. Use polling when you need a current view
+              of every device, and use <code className="rounded bg-background px-1.5 py-0.5 text-foreground">mic.online</code>{" "}
+              plus <code className="rounded bg-background px-1.5 py-0.5 text-foreground">mic.offline</code> webhooks when
+              your integration needs activation and deactivation callbacks.
+            </p>
+
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              {[
+                { title: "online", body: "The MIC is active and present in live device health data." },
+                { title: "offline", body: "The MIC is active, but live device health reports it disconnected." },
+                { title: "unknown", body: "The MIC exists, but no linked device presence record is available." },
+                { title: "503", body: "health/rtdb_unavailable means health data cannot be trusted yet." },
+              ].map((item) => (
+                <div key={item.title} className="rounded-[1.2rem] border border-border/70 bg-background/45 p-5">
+                  <p className="font-mono text-sm font-semibold text-foreground">{item.title}</p>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.body}</p>
+                </div>
+              ))}
+            </div>
+
+            <CodeExample title="GET /api/v1/mics/status" language="bash" code={micStatusCurl} maxHeight="9rem" />
+            <CodeExample title="MIC status response" language="json" code={micStatusExample} maxHeight="22rem" />
+            <CodeExample title="MIC health webhook subscription" language="json" code={webhookSubscriptionExample} maxHeight="10rem" />
           </SectionShell>
 
           <SectionShell id="quickstart" eyebrow="Quickstart" title="Create and track your first job">
@@ -1394,17 +1552,18 @@ export default function DeveloperDocsPage() {
             <CodeExample title="GET /api/v1/analysis/templates response" language="json" code={templateListExample} maxHeight="22rem" />
           </SectionShell>
 
-          <SectionShell id="webhooks" eyebrow="Webhooks" title="Verify and process terminal webhook events">
+          <SectionShell id="webhooks" eyebrow="Webhooks" title="Verify and process webhook events">
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
               <div className="space-y-4">
                 <p className="max-w-3xl text-sm leading-7 text-muted-foreground">
-                  Terminal webhooks carry the same job envelope you would receive from{" "}
+                  Job webhooks carry the same job envelope you would receive from{" "}
                   <code className="rounded bg-background px-1.5 py-0.5 text-foreground">GET /api/v1/analysis/jobs/{'{id}'}</code>,
-                  plus a fresh audio artifact URL when the artifact is ready.
+                  plus a fresh audio artifact URL when the artifact is ready. MIC health webhooks use the same signed
+                  delivery contract and send the current MIC object when connectivity changes.
                 </p>
 
                 <div className="flex flex-wrap gap-2">
-                  {["job.completed", "job.failed", "job.refunded", "webhook.test"].map((item) => (
+                  {["job.completed", "job.failed", "job.refunded", "mic.offline", "mic.online", "webhook.test"].map((item) => (
                     <code
                       key={item}
                       className="rounded-full border border-border/70 bg-background/60 px-3 py-1.5 text-xs text-foreground"
@@ -1430,6 +1589,8 @@ export default function DeveloperDocsPage() {
                       <li>KnownSense retries failed deliveries with backoff.</li>
                       <li>Do not trust the payload until the signature passes.</li>
                       <li>Deduplicate by <code className="rounded bg-card px-1.5 py-0.5 text-foreground">event_id</code> in your receiver.</li>
+                      <li>Existing endpoints with no event_types receive job terminal events only.</li>
+                      <li>Use event_types to subscribe to MIC health, job results, or both.</li>
                     </ul>
                   </div>
                 </div>
@@ -1447,7 +1608,31 @@ export default function DeveloperDocsPage() {
               </div>
             </div>
 
-            <CodeExample title="Webhook payload example" language="json" code={webhookPayloadExample} maxHeight="18rem" />
+            <CodeExample title="Job webhook payload example" language="json" code={webhookPayloadExample} maxHeight="18rem" />
+
+            <CodeTabs
+              title="MIC health webhook payloads"
+              description={'Subscribe with event_types ["mic.offline", "mic.online"] when the receiver only needs activation and deactivation events.'}
+              maxHeight="20rem"
+              tabs={[
+                {
+                  id: "mic-offline",
+                  label: "mic.offline",
+                  language: "json",
+                  title: "MIC offline payload",
+                  note: "Offline events are debounced for WebSocket closes and immediate for stale-sweep offline transitions.",
+                  code: micOfflineWebhookExample,
+                },
+                {
+                  id: "mic-online",
+                  label: "mic.online",
+                  language: "json",
+                  title: "MIC online payload",
+                  note: "Recovery emits once when a previously offline MIC comes back online.",
+                  code: micOnlineWebhookExample,
+                },
+              ]}
+            />
 
             <CodeTabs
               title="Signature verification examples"
@@ -1543,10 +1728,12 @@ export default function DeveloperDocsPage() {
                     ["402", "rate_limit/credit_balance_low", "Low-credit throttle is currently applied."],
                     ["403", "auth/api_disabled", "Company API access is disabled."],
                     ["403", "request/mic_access_denied", "One or more mics do not belong to the authenticated company."],
+                    ["404", "mic/not_found", "Requested MIC was not found for this company."],
                     ["404", "not_found/job", "Requested job was not found for this company."],
                     ["409", "request/idempotency_in_progress", "The same idempotent request is still processing."],
                     ["422", "request/idempotency_key_reused_with_different_body", "The same Idempotency-Key was reused with a different request body."],
                     ["429", "request/rate_limited", "Current read or write budget was exceeded."],
+                    ["503", "health/rtdb_unavailable", "MIC health cannot be trusted because presence data is unavailable."],
                   ].map((row) => (
                     <tr key={row[1]} className="bg-card/20">
                       <td className="px-4 py-3 text-foreground">{row[0]}</td>
@@ -1587,6 +1774,8 @@ export default function DeveloperDocsPage() {
                 "Verify webhook signatures against the raw request body bytes.",
                 "Do not store merged audio URLs as permanent asset URLs.",
                 "Handle 402, 409, 422, and 429 explicitly in retry logic.",
+                "Treat 503 health/rtdb_unavailable as an unknown MIC monitoring state and retry later.",
+                "Subscribe MIC-only receivers to mic.offline and mic.online event_types.",
                 "Run at least one no-audio and one low-credit test case before launch.",
               ].map((item) => (
                 <div key={item} className="rounded-[1.2rem] border border-border/70 bg-background/45 p-4 text-sm leading-6 text-muted-foreground">
